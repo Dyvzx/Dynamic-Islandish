@@ -50,8 +50,7 @@ PanelWindow {
             if (islandState.locked) island.isExpanded = false
         }
         function onIslandHiddenChanged() {
-            // Reset reveal state handled by islandState itself;
-            // nothing extra needed here.
+            // Nothing extra — IslandState handles reveal state itself.
         }
     }
 
@@ -91,15 +90,15 @@ PanelWindow {
             (audioMon.audioActive && audioMon.audioApp !== "")
         )
 
-    // ---- Reveal hot-zone (click to reveal) ----
+    // ---- Reveal hot-zone (only when the user has hidden the island) ----
     Item {
         id: revealZone
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
         width:  220
         height: islandState.lockedIslandHeight
-        visible: islandState.collapsed
-        enabled: islandState.collapsed
+        visible: islandState.hiddenByUser
+        enabled: islandState.hiddenByUser
         z: 100
 
         MouseArea {
@@ -123,15 +122,15 @@ PanelWindow {
         }
     }
 
-    // ---- Locked: notch shape ----
+    // ---- Locked: notch shape (only when locked via swipe-up) ----
     Rectangle {
         id: lockedNotch
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
         width: 120
         height: 9
-        visible: islandState.locked && !islandState.collapsed
-        enabled: islandState.locked && !islandState.collapsed
+        visible: islandState.lockedDown
+        enabled: islandState.lockedDown
 
         topLeftRadius: 0
         topRightRadius: 0
@@ -250,6 +249,7 @@ PanelWindow {
                     }
                     onActiveTranslationChanged: {
                         if (!active || locked) return
+                        if (islandState.collapsed) return    // already collapsed, don't re-lock
                         if (activeTranslation.y < -30) {
                             locked = true
                             islandState.locked = true
