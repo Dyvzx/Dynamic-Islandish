@@ -6,9 +6,9 @@ Item {
     required property var theme
     required property var island
 
-    // ---- Auto-hide-on-fullscreen toggle ----
+    // ---- Hide-island toggle ----
     Rectangle {
-        id: autoHideBtn
+        id: hideBtn
         anchors.top: parent.top
         anchors.right: parent.right
         width: 26
@@ -18,7 +18,7 @@ Item {
         readonly property bool active:
             root.island !== undefined &&
             root.island.islandState !== undefined &&
-            root.island.islandState.autoHideOnFullscreen
+            root.island.islandState.islandHidden
 
         color: active ? "#2affffff" : "#12ffffff"
         border.color: active ? "#4affffff" : "#1affffff"
@@ -30,7 +30,7 @@ Item {
         Text {
             anchors.centerIn: parent
             text: "\uF065"
-            color: autoHideBtn.active ? "#ffffff" : root.theme.colMuted
+            color: hideBtn.active ? "#ffffff" : root.theme.colMuted
             font { family: root.theme.fontFamily; pixelSize: 13; bold: true }
             Behavior on color { ColorAnimation { duration: 160 } }
         }
@@ -40,12 +40,12 @@ Item {
             cursorShape: Qt.PointingHandCursor
             onClicked: {
                 if (root.island && root.island.islandState)
-                    root.island.islandState.toggleAutoHide()
+                    root.island.islandState.toggleIslandHidden()
             }
         }
 
         Rectangle {
-            visible: autoHideHover.hovered
+            visible: hideHover.hovered
             color: "#2a2a2a"
             radius: 4
             border.color: root.theme.colMuted
@@ -53,23 +53,23 @@ Item {
             anchors.top: parent.bottom
             anchors.topMargin: 6
             anchors.horizontalCenter: parent.horizontalCenter
-            width: autoHideTip.width + 12
-            height: autoHideTip.height + 6
+            width: hideTip.width + 12
+            height: hideTip.height + 6
             z: 10
 
             Text {
-                id: autoHideTip
+                id: hideTip
                 anchors.centerIn: parent
-                text: autoHideBtn.active
-                    ? "Hide in fullscreen: ON"
-                    : "Hide in fullscreen: OFF"
+                text: hideBtn.active
+                    ? "Hide island: ON"
+                    : "Hide island: OFF"
                 color: root.theme.colFg
                 font { family: root.theme.fontFamily; pixelSize: 11 }
             }
         }
 
         HoverHandler {
-            id: autoHideHover
+            id: hideHover
         }
     }
 

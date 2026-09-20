@@ -17,17 +17,9 @@ PanelWindow {
     required property var audioMon
     required property var islandState
 
-    property bool hiddenForFullscreen: false
-    property bool revealHover: false
-
-    readonly property bool activelyHidden:
-        hiddenForFullscreen && !revealHover
-
-    implicitHeight: activelyHidden
-        ? islandState.islandHeight
-        : (islandState.locked
-            ? islandState.lockedIslandHeight
-            : (island.isExpanded ? Screen.height : islandState.islandHeight))
+    implicitHeight: islandState.collapsed
+        ? islandState.lockedIslandHeight
+        : (island.isExpanded ? Screen.height : islandState.islandHeight)
 
     Behavior on implicitHeight {
         NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
@@ -46,60 +38,21 @@ PanelWindow {
     property int liveVolume: 0
     property bool liveMuted: false
 
-    // ---- Fullscreen detection via hyprctl ----
-    property bool _focusedIsFullscreen: false
-
-    Process {
-        id: fullscreenProc
-        command: ["sh", "-c",
-            "hyprctl activewindow -j 2>/dev/null " +
-            "| grep -o '\"fullscreen\": *[0-9]' " +
-            "| grep -o '[0-9]$'"
-        ]
-        stdout: SplitParser {
-            onRead: data => {
-                var n = parseInt(data.trim())
-                island._focusedIsFullscreen = (!isNaN(n) && n >= 2)
-                island.recomputeFullscreenHide()
-            }
-        }
-    }
-
-    Timer {
-        interval: 500
-        running: true
-        repeat: true
-        onTriggered: {
-            fullscreenProc.running = false
-            fullscreenProc.running = true
-        }
-    }
-
-    function recomputeFullscreenHide() {
-        island.hiddenForFullscreen =
-            island._focusedIsFullscreen && islandState.autoHideOnFullscreen
-    }
-
-    onHiddenForFullscreenChanged: {
-        if (!hiddenForFullscreen) {
-            revealHover = false
-            isExpanded = false
-        }
-    }
-
+    // When the island collapses, drop out of expanded state so the
+    // next time it's revealed it comes back as a compact pill.
     Connections {
         target: islandState
-        function onAutoHideOnFullscreenChanged() {
-            island.recomputeFullscreenHide()
+
+        function onCollapsedChanged() {
+            if (islandState.collapsed) island.isExpanded = false
         }
         function onLockedChanged() {
             if (islandState.locked) island.isExpanded = false
         }
-    }
-
-    Component.onCompleted: {
-        recomputeFullscreenHide()
-        fullscreenProc.running = true
+        function onIslandHiddenChanged() {
+            // Reset reveal state handled by islandState itself;
+            // nothing extra needed here.
+        }
     }
 
     Process {
@@ -120,7 +73,7 @@ PanelWindow {
     }
     Timer {
         interval: 250
-        running: !island.isExpanded && !islandState.locked && !island.activelyHidden
+        running: !island.isExpanded && !islandState.collapsed
         repeat: true
         onTriggered: volMonProc.running = true
     }
@@ -139,24 +92,21 @@ PanelWindow {
         )
 
     // ---- Reveal hot-zone (click to reveal) ----
-    // Only enabled while the island is actually hidden. Once
-    // revealed, disabling the zone lets the island receive clicks
-    // normally — including the click-to-expand on the compact pill.
     Item {
         id: revealZone
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
         width:  220
-        height: islandState.islandHeight
-        visible: island.activelyHidden
-        enabled: island.activelyHidden
+        height: islandState.lockedIslandHeight
+        visible: islandState.collapsed
+        enabled: islandState.collapsed
         z: 100
 
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             acceptedButtons: Qt.LeftButton
-            onClicked: island.revealHover = true
+            onClicked: islandState.revealIsland()
         }
     }
 
@@ -164,12 +114,12 @@ PanelWindow {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton
-        visible: island.isExpanded && !island.activelyHidden
-        enabled: island.isExpanded && !island.activelyHidden
+        visible: island.isExpanded && !islandState.collapsed
+        enabled: island.isExpanded && !islandState.collapsed
         onClicked: {
             island.isExpanded = false
-            if (island.hiddenForFullscreen)
-                island.revealHover = false
+            if (islandState.islandHidden)
+                islandState.hideIslandAgain()
         }
     }
 
@@ -180,8 +130,8 @@ PanelWindow {
         anchors.horizontalCenter: parent.horizontalCenter
         width: 120
         height: 9
-        visible: islandState.locked && !island.activelyHidden
-        enabled: islandState.locked && !island.activelyHidden
+        visible: islandState.locked && !islandState.collapsed
+        enabled: islandState.locked && !islandState.collapsed
 
         topLeftRadius: 0
         topRightRadius: 0
@@ -238,7 +188,7 @@ PanelWindow {
 
         width:  bg.width
         height: bg.height
-        visible: !islandState.locked && !island.activelyHidden
+        visible: !islandState.collapsed
 
         Behavior on width  { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
         Behavior on height { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }

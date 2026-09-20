@@ -10,8 +10,12 @@ PanelWindow {
 
     required property var islandState
 
-    implicitHeight: islandState.locked ? islandState.lockedBarHeight
-                                       : islandState.topBarHeight
+    // Bar reserves full height only when the island is visible AND
+    // not revealed-from-hidden. Both the bar and the island read the
+    // same `collapsed` flag so their reservations stay in sync.
+    implicitHeight: islandState.collapsed
+        ? islandState.lockedBarHeight
+        : islandState.topBarHeight
 
     Behavior on implicitHeight {
         NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
@@ -19,10 +23,9 @@ PanelWindow {
 
     color: "transparent"
 
-    // Normal bar content fades out when locked.
     Item {
         anchors.fill: parent
-        opacity: islandState.locked ? 0 : 1
+        opacity: islandState.collapsed ? 0 : 1
         Behavior on opacity { NumberAnimation { duration: 200 } }
     }
 }
