@@ -38,6 +38,10 @@ PanelWindow {
     property int liveVolume: 0
     property bool liveMuted: false
 
+    // Register ourselves with IslandState so it can drive expanded state
+    // from the right-click hide/wrap handler.
+    Component.onCompleted: islandState.island = island
+
     // When the island collapses, drop out of expanded state so the
     // next time it's revealed it comes back as a compact pill.
     Connections {
@@ -104,18 +108,32 @@ PanelWindow {
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            acceptedButtons: Qt.LeftButton
-            onClicked: islandState.revealIsland()
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: function(mouse) {
+                if (mouse.button === Qt.RightButton) {
+                    // Right-click on the reveal hot-zone restores the
+                    // island as a compact pill (turns hide-island OFF).
+                    islandState.rightClickHideOrWrap()
+                } else {
+                    islandState.revealIsland()
+                }
+            }
         }
     }
 
     // Fullscreen dismiss layer when expanded.
     MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.LeftButton
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         visible: island.isExpanded && !islandState.collapsed
         enabled: island.isExpanded && !islandState.collapsed
-        onClicked: {
+        onClicked: function(mouse) {
+            if (mouse.button === Qt.RightButton) {
+                // Right-click on the dismiss layer: hide if not hidden,
+                // otherwise wrap to compact.
+                islandState.rightClickHideOrWrap()
+                return
+            }
             island.isExpanded = false
             if (islandState.islandHidden)
                 islandState.hideIslandAgain()
@@ -222,10 +240,20 @@ PanelWindow {
 
                 MouseArea {
                     anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: Qt.PointingHandCursor
 
-                    onClicked: island.isExpanded = true
+                    onClicked: function(mouse) {
+                        if (mouse.button === Qt.RightButton) {
+                            // Right-click on compact pill:
+                            //   hide-island OFF → wrap (already compact, no-op)
+                            //   hide-island ON  → fully hide
+                            islandState.rightClickHideOrWrap()
+                            return
+                        }
+                        // Left click → expand
+                        island.isExpanded = true
+                    }
 
                     onWheel: function(w) {
                         if (w.angleDelta.y > 0)
