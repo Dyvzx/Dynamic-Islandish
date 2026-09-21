@@ -6,6 +6,7 @@ Column {
     required property var island
     required property var theme
     required property var stats
+    required property var pomodoro
 
     spacing: 10
 
@@ -32,6 +33,12 @@ Column {
             font { family: root.theme.fontFamily; pixelSize: 12; bold: root.island.activeTab === 2 }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.island.activeTab = 2 }
         }
+        Text {
+            text: "\uF017  Timer"
+            color: root.island.activeTab === 3 ? root.theme.colFg : root.theme.colMuted
+            font { family: root.theme.fontFamily; pixelSize: 12; bold: root.island.activeTab === 3 }
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.island.activeTab = 3 }
+        }
     }
 
     Rectangle {
@@ -43,7 +50,8 @@ Column {
     Item {
         id: tabContent
         width: 420
-        height: 200
+        // Timer tab needs more vertical room; other tabs stay 200.
+        height: root.island.activeTab === 3 ? 300 : 200
 
         MediaTab {
             anchors.fill: parent
@@ -64,6 +72,13 @@ Column {
             visible: root.island.activeTab === 2
             theme: root.theme
             island: root.island
+        }
+
+        PomodoroTab {
+            anchors.fill: parent
+            visible: root.island.activeTab === 3
+            theme: root.theme
+            pomodoro: root.pomodoro
         }
     }
 }

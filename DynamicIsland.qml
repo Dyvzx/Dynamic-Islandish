@@ -16,6 +16,7 @@ PanelWindow {
     required property var stats
     required property var audioMon
     required property var islandState
+    required property var pomodoro
 
     implicitHeight: islandState.collapsed
         ? islandState.lockedIslandHeight
@@ -38,23 +39,32 @@ PanelWindow {
     property int liveVolume: 0
     property bool liveMuted: false
 
-    // Register ourselves with IslandState so it can drive expanded state
-    // from the right-click hide/wrap handler.
+    readonly property bool timerRunning:  pomodoro && pomodoro.state === "running"
+    readonly property bool timerFinished: pomodoro && pomodoro.state === "finished"
+
+    property bool _hiddenBeforeTimerDone: false
+
+    readonly property color ringColor:
+        island.activeAudio ? theme.mediaColor : "#30d158"
+
     Component.onCompleted: islandState.island = island
 
-    // When the island collapses, drop out of expanded state so the
-    // next time it's revealed it comes back as a compact pill.
+    onTimerFinishedChanged: {
+        if (timerFinished) {
+            island._hiddenBeforeTimerDone =
+                islandState.islandHidden && !islandState.revealedWhileHidden
+            if (island._hiddenBeforeTimerDone)
+                islandState.revealIsland()
+        }
+    }
+
     Connections {
         target: islandState
-
         function onCollapsedChanged() {
             if (islandState.collapsed) island.isExpanded = false
         }
         function onLockedChanged() {
             if (islandState.locked) island.isExpanded = false
-        }
-        function onIslandHiddenChanged() {
-            // Nothing extra — IslandState handles reveal state itself.
         }
     }
 
@@ -94,7 +104,6 @@ PanelWindow {
             (audioMon.audioActive && audioMon.audioApp !== "")
         )
 
-    // ---- Reveal hot-zone (only when the user has hidden the island) ----
     Item {
         id: revealZone
         anchors.top: parent.top
@@ -110,18 +119,14 @@ PanelWindow {
             cursorShape: Qt.PointingHandCursor
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onClicked: function(mouse) {
-                if (mouse.button === Qt.RightButton) {
-                    // Right-click on the reveal hot-zone restores the
-                    // island as a compact pill (turns hide-island OFF).
+                if (mouse.button === Qt.RightButton)
                     islandState.rightClickHideOrWrap()
-                } else {
+                else
                     islandState.revealIsland()
-                }
             }
         }
     }
 
-    // Fullscreen dismiss layer when expanded.
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -129,18 +134,13 @@ PanelWindow {
         enabled: island.isExpanded && !islandState.collapsed
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
-                // Right-click on the dismiss layer: hide if not hidden,
-                // otherwise wrap to compact.
                 islandState.rightClickHideOrWrap()
                 return
             }
             island.isExpanded = false
-            if (islandState.islandHidden)
-                islandState.hideIslandAgain()
         }
     }
 
-    // ---- Locked: notch shape (only when locked via swipe-up) ----
     Rectangle {
         id: lockedNotch
         anchors.top: parent.top
@@ -183,9 +183,7 @@ PanelWindow {
 
             property bool unlocked: false
 
-            onActiveChanged: {
-                if (active) unlocked = false
-            }
+            onActiveChanged: { if (active) unlocked = false }
             onActiveTranslationChanged: {
                 if (!active || unlocked) return
                 if (activeTranslation.y > 25) {
@@ -196,7 +194,6 @@ PanelWindow {
         }
     }
 
-    // ---- Island body ----
     Item {
         id: islandBody
         anchors.horizontalCenter: parent.horizontalCenter
@@ -216,9 +213,11 @@ PanelWindow {
 
             width: island.isExpanded
                 ? Math.max(expandedBody.width + 28, 460)
-                : (island.compactWidget === 0
-                    ? compactVisualizer.implicitWidth + 44
-                    : compactClockHolder.implicitWidth + 44)
+                : (compactTimerDone.visible
+                    ? compactTimerDone.width + 44
+                    : (island.compactWidget === 0
+                        ? compactVisualizer.implicitWidth + 44
+                        : compactClockHolder.implicitWidth + 44))
 
             height: island.isExpanded
                 ? expandedBody.height + 28
@@ -226,71 +225,68 @@ PanelWindow {
 
             radius: island.isExpanded ? 22 : height / 2
             color: theme.colBg
-            border.color: "#1c1c1e"
+            border.color: island.timerRunning ? "transparent" : "#1c1c1e"
             border.width: 1
             clip: true
 
             Behavior on radius { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+            Behavior on border.color { ColorAnimation { duration: 200 } }
 
             Item {
-                id: compactClick
-                anchors.fill: parent
-                visible: !island.isExpanded
-                enabled: !island.isExpanded
+                id: compactTimerDone
+                anchors.centerIn: parent
+                width: timerDoneRow.implicitWidth
+                height: timerDoneRow.implicitHeight
+                visible: island.timerFinished && !island.isExpanded
 
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    cursorShape: Qt.PointingHandCursor
+                Row {
+                    id: timerDoneRow
+                    anchors.centerIn: parent
+                    spacing: 10
 
-                    onClicked: function(mouse) {
-                        if (mouse.button === Qt.RightButton) {
-                            // Right-click on compact pill:
-                            //   hide-island OFF → wrap (already compact, no-op)
-                            //   hide-island ON  → fully hide
-                            islandState.rightClickHideOrWrap()
-                            return
-                        }
-                        // Left click → expand
-                        island.isExpanded = true
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "\uF017"
+                        color: island.ringColor
+                        font { family: theme.fontFamily; pixelSize: 18; bold: true }
                     }
-
-                    onWheel: function(w) {
-                        if (w.angleDelta.y > 0)
-                            island.compactWidget = (island.compactWidget - 1 + 2) % 2
-                        else if (w.angleDelta.y < 0)
-                            island.compactWidget = (island.compactWidget + 1) % 2
-                        w.accepted = true
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Timer done"
+                        color: theme.colFg
+                        font { family: theme.fontFamily; pixelSize: 13; bold: true }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "click to stop"
+                        color: theme.colMuted
+                        font { family: theme.fontFamily; pixelSize: 11 }
                     }
                 }
+            }
 
-                DragHandler {
-                    id: lockDrag
-                    target: null
-                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
-                    dragThreshold: 10
-
-                    property bool locked: false
-
-                    onActiveChanged: {
-                        if (active) locked = false
-                    }
-                    onActiveTranslationChanged: {
-                        if (!active || locked) return
-                        if (islandState.collapsed) return    // already collapsed, don't re-lock
-                        if (activeTranslation.y < -30) {
-                            locked = true
-                            islandState.locked = true
-                        }
-                    }
+            MouseArea {
+                anchors.fill: parent
+                visible: island.timerFinished && !island.isExpanded
+                enabled: island.timerFinished && !island.isExpanded
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    var wasHidden = island._hiddenBeforeTimerDone
+                    island.pomodoro.dismiss()
+                    island._hiddenBeforeTimerDone = false
+                    if (wasHidden && !islandState.islandHidden)
+                        islandState.hideIsland()
+                    else if (wasHidden)
+                        islandState.hideIslandAgain()
                 }
             }
 
             Item {
                 anchors.fill: parent
-                opacity: island.isExpanded ? 0 : 1
+                visible: !island.isExpanded && !island.timerFinished
+
+                opacity: (island.isExpanded || island.timerFinished) ? 0 : 1
                 Behavior on opacity { NumberAnimation { duration: 200 } }
-                visible: opacity > 0
 
                 CompactVisualizer {
                     id: compactVisualizer
@@ -333,7 +329,191 @@ PanelWindow {
                     island: island
                     theme: island.theme
                     stats: island.stats
+                    pomodoro: island.pomodoro
                 }
+            }
+
+            Item {
+                id: compactClick
+                anchors.fill: parent
+                visible: !island.isExpanded && !island.timerFinished
+                enabled: !island.isExpanded && !island.timerFinished
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    cursorShape: Qt.PointingHandCursor
+
+                    onClicked: function(mouse) {
+                        if (mouse.button === Qt.RightButton) {
+                            islandState.rightClickHideOrWrap()
+                            return
+                        }
+                        island.isExpanded = true
+                    }
+
+                    onWheel: function(w) {
+                        if (w.angleDelta.y > 0)
+                            island.compactWidget = (island.compactWidget - 1 + 2) % 2
+                        else if (w.angleDelta.y < 0)
+                            island.compactWidget = (island.compactWidget + 1) % 2
+                        w.accepted = true
+                    }
+                }
+
+                DragHandler {
+                    id: lockDrag
+                    target: null
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
+                    dragThreshold: 10
+
+                    property bool locked: false
+
+                    onActiveChanged: { if (active) locked = false }
+                    onActiveTranslationChanged: {
+                        if (!active || locked) return
+                        if (islandState.collapsed) return
+                        if (activeTranslation.y < -30) {
+                            locked = true
+                            islandState.locked = true
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Sand-clock timer ring ----
+        // Two arms anchored at the BOTTOM-CENTER (d = perim/2), sweeping
+        // outward along the pill's perimeter:
+        //   * Arm A sweeps COUNTER-CLOCKWISE (negative distances).
+        //   * Arm B sweeps CLOCKWISE (positive distances).
+        // Each covers halfLen = perim * remaining / 2, so at full time
+        // the two tips meet at the top-center (full ring), and as time
+        // runs down the tips retract back toward the bottom-center —
+        // i.e., the "sand" drains from the TOP DOWN, top empties first.
+        Canvas {
+            id: timerRing
+            anchors.fill: bg
+            visible: island.timerRunning
+            antialiasing: true
+            renderStrategy: Canvas.Cooperative
+            z: 10
+
+            Connections {
+                target: island.pomodoro
+                function onProgressChanged() { timerRing.requestPaint() }
+                function onStateChanged()    { timerRing.requestPaint() }
+            }
+            Connections {
+                target: island
+                function onRingColorChanged() { timerRing.requestPaint() }
+            }
+            onWidthChanged:  requestPaint()
+            onHeightChanged: requestPaint()
+            onVisibleChanged: if (visible) requestPaint()
+
+            onPaint: {
+                var ctx = getContext("2d")
+                ctx.reset()
+                ctx.clearRect(0, 0, width, height)
+
+                var stroke = 2.5
+                var inset  = stroke / 2
+                var w = width  - stroke
+                var h = height - stroke
+                var x = inset
+                var y = inset
+
+                var r = Math.min(bg.radius, Math.min(w, h) / 2)
+                if (r < 0) r = 0
+
+                var remaining = 1.0 - (island.pomodoro ? island.pomodoro.progress : 1)
+                if (remaining < 0) remaining = 0
+                if (remaining > 1) remaining = 1
+
+                var straightW = Math.max(0, w - 2 * r)
+                var straightH = Math.max(0, h - 2 * r)
+                var quarter   = Math.PI * r / 2
+                var perim     = 2 * straightW + 2 * straightH + 4 * quarter
+
+                var cx = x + w / 2
+                var cy = y + h / 2
+
+                // Segment table traced CLOCKWISE from top-center.
+                var segs = [
+                    { len: straightW / 2, kind: "line",
+                      x1: cx, y1: y, x2: x + w - r, y2: y },
+                    { len: quarter, kind: "arc",
+                      ccx: x + w - r, ccy: y + r, a1: -Math.PI/2, a2: 0 },
+                    { len: straightH, kind: "line",
+                      x1: x + w, y1: y + r, x2: x + w, y2: y + h - r },
+                    { len: quarter, kind: "arc",
+                      ccx: x + w - r, ccy: y + h - r, a1: 0, a2: Math.PI/2 },
+                    { len: straightW, kind: "line",
+                      x1: x + w - r, y1: y + h, x2: x + r, y2: y + h },
+                    { len: quarter, kind: "arc",
+                      ccx: x + r, ccy: y + h - r, a1: Math.PI/2, a2: Math.PI },
+                    { len: straightH, kind: "line",
+                      x1: x, y1: y + h - r, x2: x, y2: y + r },
+                    { len: quarter, kind: "arc",
+                      ccx: x + r, ccy: y + r, a1: Math.PI, a2: Math.PI * 1.5 },
+                    { len: straightW / 2, kind: "line",
+                      x1: x + r, y1: y, x2: cx, y2: y }
+                ]
+
+                function ptAtDist(d) {
+                    d = ((d % perim) + perim) % perim
+                    var acc = 0
+                    for (var i = 0; i < segs.length; i++) {
+                        var s = segs[i]
+                        if (d <= acc + s.len) {
+                            var t = (d - acc) / s.len
+                            if (s.kind === "line") {
+                                return { x: s.x1 + (s.x2 - s.x1) * t,
+                                         y: s.y1 + (s.y2 - s.y1) * t }
+                            } else {
+                                var a = s.a1 + (s.a2 - s.a1) * t
+                                return { x: s.ccx + r * Math.cos(a),
+                                         y: s.ccy + r * Math.sin(a) }
+                            }
+                        }
+                        acc += s.len
+                    }
+                    return { x: cx, y: y }
+                }
+
+                var halfLen = perim * remaining / 2
+                var steps = 64
+
+                ctx.lineWidth   = stroke
+                ctx.lineCap     = "round"
+                ctx.lineJoin    = "round"
+                ctx.strokeStyle = island.ringColor
+
+                if (halfLen < 0.01) return
+
+                // ---- Arm A: anchored at BOTTOM-center, sweeping CCW ----
+                // At full time (remaining = 1, halfLen = perim/2), it goes
+                // all the way around to the top-center the "left way".
+                // As time runs down, its tip retracts back to bottom-center.
+                ctx.beginPath()
+                for (var i = 0; i <= steps; i++) {
+                    var dA = perim / 2 - (halfLen * i) / steps
+                    var pA = ptAtDist(dA)
+                    if (i === 0) ctx.moveTo(pA.x, pA.y)
+                    else         ctx.lineTo(pA.x, pA.y)
+                }
+                ctx.stroke()
+
+                // ---- Arm B: anchored at BOTTOM-center, sweeping CW ----
+                ctx.beginPath()
+                for (var j = 0; j <= steps; j++) {
+                    var dB = perim / 2 + (halfLen * j) / steps
+                    var pB = ptAtDist(dB)
+                    if (j === 0) ctx.moveTo(pB.x, pB.y)
+                    else         ctx.lineTo(pB.x, pB.y)
+                }
+                ctx.stroke()
             }
         }
     }

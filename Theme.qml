@@ -12,26 +12,16 @@ QtObject {
     property color colMuted:   "#7c7c80"
     property color colDim:     "#3a3a3c"
     property color colRed:     "#f7768e"
+    property color colGreen:   "#9ece6a"
     property string fontFamily: "JetBrainsMono Nerd Font"
     property int fontSize: 14
 
     property bool wallpaperIsDark: true
     readonly property color adaptiveFg: wallpaperIsDark ? "#ffffff" : "#1a1b26"
 
-    // ---- Media-tinted color ----
-    // Dominant color extracted from the current album art.
-    // Falls back to white when nothing is playing / extraction fails.
     property color mediaColor: "#ffffff"
-
-    // Used internally so we only re-run extraction on URL change.
     property string _lastArtUrl: ""
 
-    // ------------------------------------------------------------------
-    // Hex parsing
-    // ------------------------------------------------------------------
-    // magick can emit "#rrggbb" or "#rrggbbaa". Qt wants "#aarrggbb" for
-    // 8-digit hex, so we drop the alpha to avoid ambiguity and always
-    // return a 6-digit hex string.
     function _parseHex(hex) {
         var h = String(hex).trim()
         if (!h) return ""
@@ -40,24 +30,12 @@ QtObject {
         return ""
     }
 
-    // ------------------------------------------------------------------
-    // Visibility clamp
-    // ------------------------------------------------------------------
-    // Ensures the extracted color is readable on the island's dark
-    // background. Preserves hue exactly; only lifts V (brightness) and S
-    // (saturation) to readable floors.
-    //
-    // Tuning:
-    //   minV = 0.55  → raise for brighter/more energetic bars,
-    //                  lower (0.35) to let dark colors stay dark
-    //   minS = 0.35  → raise for more chroma, 0.0 to disable the floor
     function _ensureVisible(hex) {
         var h = hex.substring(1)
         var r = parseInt(h.substring(0, 2), 16) / 255
         var g = parseInt(h.substring(2, 4), 16) / 255
         var b = parseInt(h.substring(4, 6), 16) / 255
 
-        // RGB → HSV
         var max = Math.max(r, g, b)
         var min = Math.min(r, g, b)
         var delta = max - min
@@ -72,15 +50,11 @@ QtObject {
             if (hue < 0) hue += 360
         }
 
-        // Clamp brightness / saturation to readable floors.
         var minV = 0.55
         var minS = 0.35
         if (v < minV) v = minV
-        // Only apply the saturation floor when there's actually some hue
-        // (i.e., the color isn't pure grey with zero chroma originally).
         if (delta !== 0 && s < minS) s = minS
 
-        // HSV → RGB
         var c = v * s
         var x = c * (1 - Math.abs(((hue / 60) % 2) - 1))
         var m = v - c
@@ -99,9 +73,6 @@ QtObject {
         return "#" + toHex(rp) + toHex(gp) + toHex(bp)
     }
 
-    // ------------------------------------------------------------------
-    // Extraction
-    // ------------------------------------------------------------------
     function refreshMediaColor() {
         var p = currentPlayer()
         var url = (p && p.trackArtUrl) ? String(p.trackArtUrl) : ""
@@ -109,19 +80,11 @@ QtObject {
         if (url === _lastArtUrl) return
         _lastArtUrl = url
 
-        //console.log("art url:", url) // this is for debugging this function.
-
         if (!url) {
             mediaColor = "#ffffff"
             return
         }
 
-        // Handle:
-        //   - http(s):// URLs          → fetch with curl to /tmp
-        //   - file:// paths            → strip scheme
-        //   - Chromium/Electron's ephemeral temp files → copy to a stable
-        //     path before magick runs, because they vanish or are being
-        //     rewritten mid-read.
         var cmd =
             "src=" + JSON.stringify(url) + "; " +
             "if [ \"${src#http}\" != \"$src\" ]; then " +
@@ -146,12 +109,10 @@ QtObject {
         stdout: SplitParser {
             onRead: data => {
                 var raw = data.trim()
-                //console.log("art hex raw:", raw) // for debugging
                 var hex = theme._parseHex(raw)
                 if (hex !== "") {
                     var fixed = theme._ensureVisible(hex)
                     theme.mediaColor = fixed
-                    //console.log("mediaColor set to:", fixed)// for debugging
                 }
             }
         }
@@ -168,9 +129,6 @@ QtObject {
     }
     Component.onCompleted: refreshMediaColor()
 
-    // ------------------------------------------------------------------
-    // MPRIS helpers
-    // ------------------------------------------------------------------
     function currentPlayer() {
         var ps = Mpris.players ? Mpris.players.values : []
         if (!ps || ps.length === 0) return null

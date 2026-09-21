@@ -6,79 +6,13 @@ Item {
     required property var theme
     required property var island
 
-    // ---- Hide-island toggle ----
-    Rectangle {
-        id: hideBtn
-        anchors.top: parent.top
-        anchors.right: parent.right
-        width: 26
-        height: 26
-        radius: 13
-
-        readonly property bool active:
-            root.island !== undefined &&
-            root.island.islandState !== undefined &&
-            root.island.islandState.islandHidden
-
-        color: active ? "#2affffff" : "#12ffffff"
-        border.color: active ? "#4affffff" : "#1affffff"
-        border.width: 1
-
-        Behavior on color { ColorAnimation { duration: 160 } }
-        Behavior on border.color { ColorAnimation { duration: 160 } }
-
-        Text {
-            anchors.centerIn: parent
-            text: "\uF065"
-            color: hideBtn.active ? "#ffffff" : root.theme.colMuted
-            font { family: root.theme.fontFamily; pixelSize: 13; bold: true }
-            Behavior on color { ColorAnimation { duration: 160 } }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                if (root.island && root.island.islandState)
-                    root.island.islandState.toggleIslandHidden()
-            }
-        }
-
-        Rectangle {
-            visible: hideHover.hovered
-            color: "#2a2a2a"
-            radius: 4
-            border.color: root.theme.colMuted
-            border.width: 1
-            anchors.top: parent.bottom
-            anchors.topMargin: 6
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: hideTip.width + 12
-            height: hideTip.height + 6
-            z: 10
-
-            Text {
-                id: hideTip
-                anchors.centerIn: parent
-                text: hideBtn.active
-                    ? "Hide island: ON"
-                    : "Hide island: OFF"
-                color: root.theme.colFg
-                font { family: root.theme.fontFamily; pixelSize: 11 }
-            }
-        }
-
-        HoverHandler {
-            id: hideHover
-        }
-    }
-
     Column {
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 10
         width: parent.width
 
+        // ============ Media player ============
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 14
@@ -164,6 +98,7 @@ Item {
             }
         }
 
+        // ============ Progress bar ============
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 8
@@ -262,6 +197,7 @@ Item {
             }
         }
 
+        // ============ Transport controls ============
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 30
@@ -299,6 +235,78 @@ Item {
         }
     }
 
+    // ============ Hide-island toggle (left edge, above workspaces) ============
+    Rectangle {
+        id: hideBtn
+        anchors.left: parent.left
+        anchors.leftMargin: 0
+        // Sit just above the workspaces row (which lives at parent.bottom
+        // with height 26). Add a small gap.
+        anchors.bottom: wsContainer.top
+        anchors.bottomMargin: 8
+        width: 26
+        height: 26
+        radius: 13
+
+        readonly property bool active:
+            root.island !== undefined &&
+            root.island.islandState !== undefined &&
+            root.island.islandState.islandHidden
+
+        color: active ? "#2affffff" : "#12ffffff"
+        border.color: active ? "#4affffff" : "#1affffff"
+        border.width: 1
+
+        Behavior on color { ColorAnimation { duration: 160 } }
+        Behavior on border.color { ColorAnimation { duration: 160 } }
+
+        Text {
+            anchors.centerIn: parent
+            text: "\uF065"
+            color: hideBtn.active ? "#ffffff" : root.theme.colMuted
+            font { family: root.theme.fontFamily; pixelSize: 13; bold: true }
+            Behavior on color { ColorAnimation { duration: 160 } }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (root.island && root.island.islandState)
+                    root.island.islandState.toggleIslandHidden()
+            }
+        }
+
+        Rectangle {
+            visible: hideHover.hovered
+            color: "#2a2a2a"
+            radius: 4
+            border.color: root.theme.colMuted
+            border.width: 1
+            anchors.top: parent.bottom
+            anchors.topMargin: 6
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: hideTip.width + 12
+            height: hideTip.height + 6
+            z: 10
+
+            Text {
+                id: hideTip
+                anchors.centerIn: parent
+                text: hideBtn.active
+                    ? "Hide island: ON"
+                    : "Hide island: OFF"
+                color: root.theme.colFg
+                font { family: root.theme.fontFamily; pixelSize: 11 }
+            }
+        }
+
+        HoverHandler {
+            id: hideHover
+        }
+    }
+
+    // ============ Workspaces ============
     WorkspaceRow {
         id: wsContainer
         anchors.bottom: parent.bottom

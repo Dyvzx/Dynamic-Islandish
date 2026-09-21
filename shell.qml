@@ -10,6 +10,7 @@ ShellRoot {
     Stats        { id: stats        }
     AudioMonitor { id: audioMon     }
     IslandState  { id: islandState  }
+    Pomodoro     { id: pomodoro     }
 
     TopBar {
         islandState: islandState
@@ -20,5 +21,6 @@ ShellRoot {
         stats: stats
         audioMon: audioMon
         islandState: islandState
+        pomodoro: pomodoro
     }
 }
