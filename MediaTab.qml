@@ -237,72 +237,196 @@ Item {
         }
     }
 
-    // ============ Hide-island toggle (left edge, above workspaces) ============
-    Rectangle {
-        id: hideBtn
-        anchors.left: parent.left
-        anchors.leftMargin: 0
+    // ============ Feature toggles ============
+    // Row of three buttons, centered horizontally, sitting just above
+    // the workspaces row.
+    //   [ hide island ]  [ media pop-ups ]  [ notifications ]
+    Row {
+        id: toggleRow
+        anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: wsContainer.top
         anchors.bottomMargin: 8
-        width: 26
-        height: 26
-        radius: 13
+        spacing: 10
 
-        readonly property bool active:
-            root.island !== undefined &&
-            root.island.islandState !== undefined &&
-            root.island.islandState.islandHidden
-
-        color: active ? "#2affffff" : "#12ffffff"
-        border.color: active ? "#4affffff" : "#1affffff"
-        border.width: 1
-
-        Behavior on color { ColorAnimation { duration: 160 } }
-        Behavior on border.color { ColorAnimation { duration: 160 } }
-
-        Text {
-            anchors.centerIn: parent
-            text: "\uF065"
-            color: hideBtn.active ? "#ffffff" : root.theme.colMuted
-            font { family: root.theme.fontFamily; pixelSize: 13; bold: true }
-            Behavior on color { ColorAnimation { duration: 160 } }
-        }
-
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                if (root.island && root.island.islandState)
-                    root.island.islandState.toggleIslandHidden()
-            }
-        }
-
+        // ---- 1. Hide-island toggle ----
         Rectangle {
-            visible: hideHover.hovered
-            color: "#2a2a2a"
-            radius: 4
-            border.color: root.theme.colMuted
+            id: hideBtn
+            width: 26; height: 26; radius: 13
+
+            readonly property bool active:
+                root.island !== undefined &&
+                root.island.islandState !== undefined &&
+                root.island.islandState.islandHidden
+
+            color: active ? "#2affffff" : "#12ffffff"
+            border.color: active ? "#4affffff" : "#1affffff"
             border.width: 1
-            anchors.top: parent.bottom
-            anchors.topMargin: 6
-            anchors.horizontalCenter: parent.horizontalCenter
-            width: hideTip.width + 12
-            height: hideTip.height + 6
-            z: 10
+
+            Behavior on color { ColorAnimation { duration: 160 } }
+            Behavior on border.color { ColorAnimation { duration: 160 } }
 
             Text {
-                id: hideTip
                 anchors.centerIn: parent
-                text: hideBtn.active
-                    ? "Hide island: ON"
-                    : "Hide island: OFF"
-                color: root.theme.colFg
-                font { family: root.theme.fontFamily; pixelSize: 11 }
+                text: "\uF065"
+                color: hideBtn.active ? "#ffffff" : root.theme.colMuted
+                font { family: root.theme.fontFamily; pixelSize: 13; bold: true }
+                Behavior on color { ColorAnimation { duration: 160 } }
             }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (root.island && root.island.islandState)
+                        root.island.islandState.toggleIslandHidden()
+                }
+            }
+
+            Rectangle {
+                visible: hideHover.hovered
+                color: "#2a2a2a"
+                radius: 4
+                border.color: root.theme.colMuted
+                border.width: 1
+                anchors.top: parent.bottom
+                anchors.topMargin: 6
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: hideTip.width + 12
+                height: hideTip.height + 6
+                z: 10
+
+                Text {
+                    id: hideTip
+                    anchors.centerIn: parent
+                    text: hideBtn.active ? "Hide island: ON" : "Hide island: OFF"
+                    color: root.theme.colFg
+                    font { family: root.theme.fontFamily; pixelSize: 11 }
+                }
+            }
+
+            HoverHandler { id: hideHover }
         }
 
-        HoverHandler {
-            id: hideHover
+        // ---- 2. Media pop-ups toggle ----
+        Rectangle {
+            id: mediaPopupBtn
+            width: 26; height: 26; radius: 13
+
+            readonly property bool active:
+                root.island !== undefined &&
+                root.island.islandState !== undefined &&
+                root.island.islandState.mediaPopupsEnabled
+
+            color: active ? "#2a30d158" : "#12ffffff"
+            border.color: active ? "#5530d158" : "#1affffff"
+            border.width: 1
+
+            Behavior on color { ColorAnimation { duration: 160 } }
+            Behavior on border.color { ColorAnimation { duration: 160 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "\uF001"
+                color: mediaPopupBtn.active ? "#30d158" : root.theme.colMuted
+                font { family: root.theme.fontFamily; pixelSize: 13; bold: true }
+                Behavior on color { ColorAnimation { duration: 160 } }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (root.island && root.island.islandState)
+                        root.island.islandState.toggleMediaPopups()
+                }
+            }
+
+            Rectangle {
+                visible: mediaPopupHover.hovered
+                color: "#2a2a2a"
+                radius: 4
+                border.color: root.theme.colMuted
+                border.width: 1
+                anchors.top: parent.bottom
+                anchors.topMargin: 6
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: mediaPopupTip.width + 12
+                height: mediaPopupTip.height + 6
+                z: 10
+
+                Text {
+                    id: mediaPopupTip
+                    anchors.centerIn: parent
+                    text: mediaPopupBtn.active
+                        ? "Media pop-ups: ON"
+                        : "Media pop-ups: OFF"
+                    color: root.theme.colFg
+                    font { family: root.theme.fontFamily; pixelSize: 11 }
+                }
+            }
+
+            HoverHandler { id: mediaPopupHover }
+        }
+
+        // ---- 3. Notifications toggle ----
+        Rectangle {
+            id: notifBtn
+            width: 26; height: 26; radius: 13
+
+            readonly property bool active:
+                root.island !== undefined &&
+                root.island.islandState !== undefined &&
+                root.island.islandState.notificationsEnabled
+
+            color: active ? "#2af7768e" : "#12ffffff"
+            border.color: active ? "#55f7768e" : "#1affffff"
+            border.width: 1
+
+            Behavior on color { ColorAnimation { duration: 160 } }
+            Behavior on border.color { ColorAnimation { duration: 160 } }
+
+            Text {
+                anchors.centerIn: parent
+                text: "\uF0F3"
+                color: notifBtn.active ? "#f7768e" : root.theme.colMuted
+                font { family: root.theme.fontFamily; pixelSize: 13; bold: true }
+                Behavior on color { ColorAnimation { duration: 160 } }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (root.island && root.island.islandState)
+                        root.island.islandState.toggleNotifications()
+                }
+            }
+
+            Rectangle {
+                visible: notifHover.hovered
+                color: "#2a2a2a"
+                radius: 4
+                border.color: root.theme.colMuted
+                border.width: 1
+                anchors.top: parent.bottom
+                anchors.topMargin: 6
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: notifTip.width + 12
+                height: notifTip.height + 6
+                z: 10
+
+                Text {
+                    id: notifTip
+                    anchors.centerIn: parent
+                    text: notifBtn.active
+                        ? "Notifications: ON"
+                        : "Notifications: OFF"
+                    color: root.theme.colFg
+                    font { family: root.theme.fontFamily; pixelSize: 11 }
+                }
+            }
+
+            HoverHandler { id: notifHover }
         }
     }
 

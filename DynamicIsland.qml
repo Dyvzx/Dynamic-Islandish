@@ -42,18 +42,19 @@ PanelWindow {
 
     readonly property bool timerRunning: pomodoro && pomodoro.state === "running"
 
+    // "notification exists in the monitor"
     readonly property bool notificationActive:
         notificationMon && notificationMon.current !== null
+
+    // "notification exists AND notifications are enabled" — used for all
+    // visual / reveal decisions.
+    readonly property bool notificationShowing:
+        islandState.notificationsEnabled && notificationActive
 
     // ---- Media reveal ----
     property int mediaRevealDuration: 4000
     property bool mediaRevealActive: false
     property bool _prevMediaPlaying: false
-
-    // When the user interacts during the reveal (scroll, click, drag),
-    // we cancel the reveal but DON'T restore the pre-reveal hidden /
-    // locked state — the island stays visible so the user can keep
-    // using it.
     property bool _mediaRevealUserCancelled: false
 
     property bool _mediaPrevHidden: false
@@ -63,7 +64,7 @@ PanelWindow {
     readonly property bool mediaRevealShowing:
         mediaRevealActive
         && !isExpanded
-        && !notificationActive
+        && !notificationShowing
 
     // ---- Notification reveal snapshot ----
     property bool _notifPrevHidden: false
@@ -75,12 +76,6 @@ PanelWindow {
 
     Component.onCompleted: islandState.island = island
 
-    // ============================================================
-    // Shared wheel logic.
-    //
-    // Scrolling during a reveal cancels the reveal WITHOUT restoring
-    // the previous hidden/locked state, then toggles the widget.
-    // ============================================================
     function cycleCompactWidget(delta) {
         if (island.mediaRevealActive) {
             island._mediaRevealUserCancelled = true
@@ -94,12 +89,15 @@ PanelWindow {
 
     // ============================================================
     // Media playing: detect rising edge → reveal for a few seconds
+    // (skipped entirely if media pop-ups are disabled)
     // ============================================================
     onMediaPlayingChanged: {
         if (mediaPlaying && !_prevMediaPlaying) {
-            island._mediaRevealUserCancelled = false
-            mediaRevealActive = true
-            mediaRevealTimer.restart()
+            if (islandState.mediaPopupsEnabled) {
+                island._mediaRevealUserCancelled = false
+                mediaRevealActive = true
+                mediaRevealTimer.restart()
+            }
         }
         _prevMediaPlaying = mediaPlaying
     }
@@ -108,8 +106,6 @@ PanelWindow {
         id: mediaRevealTimer
         interval: island.mediaRevealDuration
         repeat: false
-        // Timeout = natural end → restore snapshot.
-        // (User cancel sets `_mediaRevealUserCancelled = true` first.)
         onTriggered: island.mediaRevealActive = false
     }
 
@@ -118,8 +114,7 @@ PanelWindow {
     // ============================================================
     onMediaRevealActiveChanged: {
         if (mediaRevealActive) {
-            // Capture pre-reveal state.
-            if (!notificationActive) {
+            if (!notificationShowing) {
                 _mediaPrevHidden   = islandState.islandHidden
                 _mediaPrevLocked   = islandState.locked
                 _mediaPrevRevealed = islandState.revealedWhileHidden
@@ -131,8 +126,6 @@ PanelWindow {
                     islandState.locked = false
             }
         } else {
-            // User-initiated cancel: leave the island as-is (visible,
-            // unlocked). Don't restore the pre-reveal state.
             if (island._mediaRevealUserCancelled) {
                 island._mediaRevealUserCancelled = false
                 island._mediaPrevHidden   = false
@@ -141,8 +134,7 @@ PanelWindow {
                 return
             }
 
-            // Natural timeout: restore.
-            if (!notificationActive) {
+            if (!notificationShowing) {
                 if (_mediaPrevLocked)
                     islandState.locked = true
 
@@ -159,10 +151,10 @@ PanelWindow {
     }
 
     // ============================================================
-    // Notifications
+    // Notifications: only participate when enabled
     // ============================================================
     onNotificationActiveChanged: {
-        if (notificationActive) {
+        if (notificationActive && islandState.notificationsEnabled) {
             island._notifPrevHidden   = islandState.islandHidden
             island._notifPrevLocked   = islandState.locked
             island._notifPrevRevealed = islandState.revealedWhileHidden
@@ -184,6 +176,29 @@ PanelWindow {
             island._notifPrevHidden   = false
             island._notifPrevLocked   = false
             island._notifPrevRevealed = false
+        }
+    }
+
+    // When notifications are toggled off mid-display, dismiss everything
+    // and restore the island to its pre-notification state.
+    Connections {
+        target: islandState
+        function onNotificationsEnabledChanged() {
+            if (!islandState.notificationsEnabled) {
+                if (island.notificationMon)
+                    island.notificationMon.dismissAll()
+
+                if (island._notifPrevLocked)
+                    islandState.locked = true
+                if (island._notifPrevHidden)
+                    islandState.hideIslandAgain()
+                else if (island._notifPrevRevealed)
+                    islandState.revealedWhileHidden = true
+
+                island._notifPrevHidden   = false
+                island._notifPrevLocked   = false
+                island._notifPrevRevealed = false
+            }
         }
     }
 
@@ -377,7 +392,7 @@ PanelWindow {
                 anchors.centerIn: parent
                 width: notifContent.implicitWidth
                 height: notifContent.implicitHeight
-                visible: island.notificationActive && !island.isExpanded
+                visible: island.notificationShowing && !island.isExpanded
 
                 NotificationIsland {
                     id: notifContent
@@ -418,7 +433,7 @@ PanelWindow {
             Item {
                 anchors.fill: parent
                 visible: !island.isExpanded
-                         && !island.notificationActive
+                         && !island.notificationShowing
                          && !island.mediaRevealShowing
 
                 opacity: visible ? 1 : 0
@@ -472,7 +487,7 @@ PanelWindow {
             Item {
                 id: compactClick
                 anchors.fill: parent
-                visible: !island.isExpanded && !island.notificationActive
+                visible: !island.isExpanded && !island.notificationShowing
                 enabled: visible
 
                 MouseArea {

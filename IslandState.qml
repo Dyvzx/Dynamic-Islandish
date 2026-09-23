@@ -8,6 +8,10 @@ QtObject {
     property bool islandHidden: false
     property bool revealedWhileHidden: false
 
+    // ---- Feature toggles (set from MediaTab, read from DynamicIsland) ----
+    property bool mediaPopupsEnabled: true
+    property bool notificationsEnabled: true
+
     readonly property bool hiddenByUser:
         islandHidden && !revealedWhileHidden
 
@@ -23,7 +27,6 @@ QtObject {
     readonly property int lockedBarHeight: 2
     readonly property int lockedIslandHeight: 14
 
-    // Set from shell.qml so we can control expanded state.
     property var island: null
 
     function toggleLock() {
@@ -45,19 +48,21 @@ QtObject {
         revealedWhileHidden = false
     }
 
-    // ---- Right-click: hide or wrap ----
-    // hide-island ON  → fully hide (same as hide-island button ON)
-    // hide-island OFF → wrap to compact (collapse expanded state)
+    function toggleMediaPopups() {
+        mediaPopupsEnabled = !mediaPopupsEnabled
+    }
+
+    function toggleNotifications() {
+        notificationsEnabled = !notificationsEnabled
+    }
+
     function rightClickHideOrWrap() {
         if (islandHidden) {
-            // Fully hide: keep islandHidden true, drop any temp reveal,
-            // cancel locked mode, and collapse expanded state.
             revealedWhileHidden = false
             locked = false
             if (island && island.isExpanded !== undefined)
                 island.isExpanded = false
         } else {
-            // Wrap to compact: collapse expanded state only.
             if (island && island.isExpanded !== undefined)
                 island.isExpanded = false
         }
