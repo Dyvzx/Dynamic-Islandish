@@ -6,6 +6,8 @@ Item {
     required property var theme
     required property var island
 
+    readonly property var currentPlayer: root.theme.currentPlayer()
+
     Column {
         anchors.top: parent.top
         anchors.horizontalCenter: parent.horizontalCenter
@@ -27,7 +29,7 @@ Item {
                     id: artImg
                     anchors.fill: parent
                     source: {
-                        var p = root.theme.currentPlayer()
+                        var p = root.currentPlayer
                         return (p && p.trackArtUrl) ? p.trackArtUrl : ""
                     }
                     fillMode: Image.PreserveAspectCrop
@@ -45,7 +47,7 @@ Item {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        var p = root.theme.currentPlayer()
+                        var p = root.currentPlayer
                         if (p) focusPlayer(p)
                     }
                 }
@@ -60,7 +62,7 @@ Item {
                     id: titleText
                     width: parent.width
                     text: {
-                        var p = root.theme.currentPlayer()
+                        var p = root.currentPlayer
                         if (p && (p.trackTitle || p.trackArtists))
                             return p.trackTitle || "Unknown title"
                         if (root.island.audioMon.audioActive && root.island.audioMon.audioApp.length > 0)
@@ -75,7 +77,7 @@ Item {
                         anchors.fill: parent
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            var p = root.theme.currentPlayer()
+                            var p = root.currentPlayer
                             if (p) focusPlayer(p)
                         }
                     }
@@ -84,7 +86,7 @@ Item {
                 Text {
                     width: parent.width
                     text: {
-                        var p = root.theme.currentPlayer()
+                        var p = root.currentPlayer
                         if (p && p.trackArtists)
                             return root.theme.artistString(p.trackArtists)
                         if (root.island.audioMon.audioActive)
@@ -116,7 +118,7 @@ Item {
                 color: root.theme.colDim
                 anchors.verticalCenter: parent.verticalCenter
 
-                property var player: root.theme.currentPlayer()
+                property var player: root.currentPlayer
                 property real total: (player && player.length > 0) ? player.length : 0
                 property real current: (player && player.position) ? player.position : 0
 
@@ -208,19 +210,19 @@ Item {
                 font { family: root.theme.fontFamily; pixelSize: 18 }
                 MouseArea {
                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                    onClicked: { var p = root.theme.currentPlayer(); if (p && p.canGoPrevious) p.previous() }
+                    onClicked: { var p = root.currentPlayer; if (p && p.canGoPrevious) p.previous() }
                 }
             }
             Text {
                 text: {
-                    var p = root.theme.currentPlayer()
+                    var p = root.currentPlayer
                     return (p && p.isPlaying) ? "\uF04C" : "\uF04B"
                 }
                 color: root.theme.colFg
                 font { family: root.theme.fontFamily; pixelSize: 22 }
                 MouseArea {
                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                    onClicked: { var p = root.theme.currentPlayer(); if (p && p.canTogglePlaying) p.togglePlaying() }
+                    onClicked: { var p = root.currentPlayer; if (p && p.canTogglePlaying) p.togglePlaying() }
                 }
             }
             Text {
@@ -229,7 +231,7 @@ Item {
                 font { family: root.theme.fontFamily; pixelSize: 18 }
                 MouseArea {
                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                    onClicked: { var p = root.theme.currentPlayer(); if (p && p.canGoNext) p.next() }
+                    onClicked: { var p = root.currentPlayer; if (p && p.canGoNext) p.next() }
                 }
             }
         }
@@ -240,8 +242,6 @@ Item {
         id: hideBtn
         anchors.left: parent.left
         anchors.leftMargin: 0
-        // Sit just above the workspaces row (which lives at parent.bottom
-        // with height 26). Add a small gap.
         anchors.bottom: wsContainer.top
         anchors.bottomMargin: 8
         width: 26

@@ -17,10 +17,11 @@ PanelWindow {
     required property var audioMon
     required property var islandState
     required property var pomodoro
+    required property var notificationMon
 
     implicitHeight: islandState.collapsed
         ? islandState.lockedIslandHeight
-        : (island.isExpanded ? Screen.height : islandState.islandHeight)
+        : (island.isExpanded ? island.screen.height : islandState.islandHeight)
 
     Behavior on implicitHeight {
         NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
@@ -39,23 +40,156 @@ PanelWindow {
     property int liveVolume: 0
     property bool liveMuted: false
 
-    readonly property bool timerRunning:  pomodoro && pomodoro.state === "running"
-    readonly property bool timerFinished: pomodoro && pomodoro.state === "finished"
+    readonly property bool timerRunning: pomodoro && pomodoro.state === "running"
 
-    property bool _hiddenBeforeTimerDone: false
+    readonly property bool notificationActive:
+        notificationMon && notificationMon.current !== null
+
+    // ---- Media reveal ----
+    property int mediaRevealDuration: 4000
+    property bool mediaRevealActive: false
+    property bool _prevMediaPlaying: false
+
+    // When the user interacts during the reveal (scroll, click, drag),
+    // we cancel the reveal but DON'T restore the pre-reveal hidden /
+    // locked state — the island stays visible so the user can keep
+    // using it.
+    property bool _mediaRevealUserCancelled: false
+
+    property bool _mediaPrevHidden: false
+    property bool _mediaPrevLocked: false
+    property bool _mediaPrevRevealed: false
+
+    readonly property bool mediaRevealShowing:
+        mediaRevealActive
+        && !isExpanded
+        && !notificationActive
+
+    // ---- Notification reveal snapshot ----
+    property bool _notifPrevHidden: false
+    property bool _notifPrevLocked: false
+    property bool _notifPrevRevealed: false
 
     readonly property color ringColor:
         island.activeAudio ? theme.mediaColor : "#30d158"
 
     Component.onCompleted: islandState.island = island
 
-    onTimerFinishedChanged: {
-        if (timerFinished) {
-            island._hiddenBeforeTimerDone =
-                islandState.islandHidden && !islandState.revealedWhileHidden
-            if (island._hiddenBeforeTimerDone)
-                islandState.revealIsland()
+    // ============================================================
+    // Shared wheel logic.
+    //
+    // Scrolling during a reveal cancels the reveal WITHOUT restoring
+    // the previous hidden/locked state, then toggles the widget.
+    // ============================================================
+    function cycleCompactWidget(delta) {
+        if (island.mediaRevealActive) {
+            island._mediaRevealUserCancelled = true
+            island.mediaRevealActive = false
         }
+        if (delta > 0)
+            island.compactWidget = (island.compactWidget - 1 + 2) % 2
+        else if (delta < 0)
+            island.compactWidget = (island.compactWidget + 1) % 2
+    }
+
+    // ============================================================
+    // Media playing: detect rising edge → reveal for a few seconds
+    // ============================================================
+    onMediaPlayingChanged: {
+        if (mediaPlaying && !_prevMediaPlaying) {
+            island._mediaRevealUserCancelled = false
+            mediaRevealActive = true
+            mediaRevealTimer.restart()
+        }
+        _prevMediaPlaying = mediaPlaying
+    }
+
+    Timer {
+        id: mediaRevealTimer
+        interval: island.mediaRevealDuration
+        repeat: false
+        // Timeout = natural end → restore snapshot.
+        // (User cancel sets `_mediaRevealUserCancelled = true` first.)
+        onTriggered: island.mediaRevealActive = false
+    }
+
+    // ============================================================
+    // State snapshot / restore for media reveal
+    // ============================================================
+    onMediaRevealActiveChanged: {
+        if (mediaRevealActive) {
+            // Capture pre-reveal state.
+            if (!notificationActive) {
+                _mediaPrevHidden   = islandState.islandHidden
+                _mediaPrevLocked   = islandState.locked
+                _mediaPrevRevealed = islandState.revealedWhileHidden
+
+                if (islandState.hiddenByUser)
+                    islandState.revealIsland()
+
+                if (islandState.locked)
+                    islandState.locked = false
+            }
+        } else {
+            // User-initiated cancel: leave the island as-is (visible,
+            // unlocked). Don't restore the pre-reveal state.
+            if (island._mediaRevealUserCancelled) {
+                island._mediaRevealUserCancelled = false
+                island._mediaPrevHidden   = false
+                island._mediaPrevLocked   = false
+                island._mediaPrevRevealed = false
+                return
+            }
+
+            // Natural timeout: restore.
+            if (!notificationActive) {
+                if (_mediaPrevLocked)
+                    islandState.locked = true
+
+                if (_mediaPrevHidden)
+                    islandState.hideIslandAgain()
+                else if (_mediaPrevRevealed)
+                    islandState.revealedWhileHidden = true
+
+                _mediaPrevHidden   = false
+                _mediaPrevLocked   = false
+                _mediaPrevRevealed = false
+            }
+        }
+    }
+
+    // ============================================================
+    // Notifications
+    // ============================================================
+    onNotificationActiveChanged: {
+        if (notificationActive) {
+            island._notifPrevHidden   = islandState.islandHidden
+            island._notifPrevLocked   = islandState.locked
+            island._notifPrevRevealed = islandState.revealedWhileHidden
+
+            if (islandState.hiddenByUser)
+                islandState.revealIsland()
+
+            if (islandState.locked)
+                islandState.locked = false
+        } else {
+            if (island._notifPrevLocked)
+                islandState.locked = true
+
+            if (island._notifPrevHidden)
+                islandState.hideIslandAgain()
+            else if (island._notifPrevRevealed)
+                islandState.revealedWhileHidden = true
+
+            island._notifPrevHidden   = false
+            island._notifPrevLocked   = false
+            island._notifPrevRevealed = false
+        }
+    }
+
+    function dismissNotification() {
+        if (island.notificationMon)
+            island.notificationMon.dismissCurrent()
     }
 
     Connections {
@@ -82,13 +216,17 @@ PanelWindow {
                 }
             }
         }
-        Component.onCompleted: running = true
     }
+
     Timer {
         interval: 250
         running: !island.isExpanded && !islandState.collapsed
         repeat: true
-        onTriggered: volMonProc.running = true
+        onTriggered: {
+            volMonProc.running = false
+            volMonProc.running = true
+        }
+        Component.onCompleted: if (running) volMonProc.running = true
     }
 
     readonly property bool mediaPlaying: {
@@ -213,11 +351,13 @@ PanelWindow {
 
             width: island.isExpanded
                 ? Math.max(expandedBody.width + 28, 460)
-                : (compactTimerDone.visible
-                    ? compactTimerDone.width + 44
-                    : (island.compactWidget === 0
-                        ? compactVisualizer.implicitWidth + 44
-                        : compactClockHolder.implicitWidth + 44))
+                : (compactNotification.visible
+                    ? compactNotification.width + 44
+                    : (compactMediaReveal.visible
+                        ? compactMediaReveal.width + 44
+                        : (island.compactWidget === 0
+                            ? compactVisualizer.implicitWidth + 44
+                            : compactClockHolder.implicitWidth + 44)))
 
             height: island.isExpanded
                 ? expandedBody.height + 28
@@ -233,59 +373,55 @@ PanelWindow {
             Behavior on border.color { ColorAnimation { duration: 200 } }
 
             Item {
-                id: compactTimerDone
+                id: compactNotification
                 anchors.centerIn: parent
-                width: timerDoneRow.implicitWidth
-                height: timerDoneRow.implicitHeight
-                visible: island.timerFinished && !island.isExpanded
+                width: notifContent.implicitWidth
+                height: notifContent.implicitHeight
+                visible: island.notificationActive && !island.isExpanded
 
-                Row {
-                    id: timerDoneRow
+                NotificationIsland {
+                    id: notifContent
                     anchors.centerIn: parent
-                    spacing: 10
+                    theme: island.theme
+                    notif: island.notificationMon ? island.notificationMon.current : null
+                    accent: island.ringColor
 
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "\uF017"
-                        color: island.ringColor
-                        font { family: theme.fontFamily; pixelSize: 18; bold: true }
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "Timer done"
-                        color: theme.colFg
-                        font { family: theme.fontFamily; pixelSize: 13; bold: true }
-                    }
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: "click to stop"
-                        color: theme.colMuted
-                        font { family: theme.fontFamily; pixelSize: 11 }
-                    }
+                    onDismissRequested: island.dismissNotification()
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    cursorShape: Qt.PointingHandCursor
+                    z: -1
+
+                    onClicked: function(mouse) { island.dismissNotification() }
                 }
             }
 
-            MouseArea {
-                anchors.fill: parent
-                visible: island.timerFinished && !island.isExpanded
-                enabled: island.timerFinished && !island.isExpanded
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    var wasHidden = island._hiddenBeforeTimerDone
-                    island.pomodoro.dismiss()
-                    island._hiddenBeforeTimerDone = false
-                    if (wasHidden && !islandState.islandHidden)
-                        islandState.hideIsland()
-                    else if (wasHidden)
-                        islandState.hideIslandAgain()
+            Item {
+                id: compactMediaReveal
+                anchors.centerIn: parent
+                width: mediaRevealVisualizer.implicitWidth
+                height: mediaRevealVisualizer.implicitHeight
+                visible: island.mediaRevealShowing
+
+                CompactVisualizer {
+                    id: mediaRevealVisualizer
+                    anchors.centerIn: parent
+                    theme: island.theme
+                    activeAudio: true
+                    liveVolume: island.liveVolume
                 }
             }
 
             Item {
                 anchors.fill: parent
-                visible: !island.isExpanded && !island.timerFinished
+                visible: !island.isExpanded
+                         && !island.notificationActive
+                         && !island.mediaRevealShowing
 
-                opacity: (island.isExpanded || island.timerFinished) ? 0 : 1
+                opacity: visible ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 200 } }
 
                 CompactVisualizer {
@@ -336,8 +472,8 @@ PanelWindow {
             Item {
                 id: compactClick
                 anchors.fill: parent
-                visible: !island.isExpanded && !island.timerFinished
-                enabled: !island.isExpanded && !island.timerFinished
+                visible: !island.isExpanded && !island.notificationActive
+                enabled: visible
 
                 MouseArea {
                     anchors.fill: parent
@@ -349,14 +485,13 @@ PanelWindow {
                             islandState.rightClickHideOrWrap()
                             return
                         }
+                        island._mediaRevealUserCancelled = true
+                        island.mediaRevealActive = false
                         island.isExpanded = true
                     }
 
                     onWheel: function(w) {
-                        if (w.angleDelta.y > 0)
-                            island.compactWidget = (island.compactWidget - 1 + 2) % 2
-                        else if (w.angleDelta.y < 0)
-                            island.compactWidget = (island.compactWidget + 1) % 2
+                        island.cycleCompactWidget(w.angleDelta.y)
                         w.accepted = true
                     }
                 }
@@ -375,6 +510,8 @@ PanelWindow {
                         if (islandState.collapsed) return
                         if (activeTranslation.y < -30) {
                             locked = true
+                            island._mediaRevealUserCancelled = true
+                            island.mediaRevealActive = false
                             islandState.locked = true
                         }
                     }
@@ -382,15 +519,6 @@ PanelWindow {
             }
         }
 
-        // ---- Sand-clock timer ring ----
-        // Two arms anchored at the BOTTOM-CENTER (d = perim/2), sweeping
-        // outward along the pill's perimeter:
-        //   * Arm A sweeps COUNTER-CLOCKWISE (negative distances).
-        //   * Arm B sweeps CLOCKWISE (positive distances).
-        // Each covers halfLen = perim * remaining / 2, so at full time
-        // the two tips meet at the top-center (full ring), and as time
-        // runs down the tips retract back toward the bottom-center —
-        // i.e., the "sand" drains from the TOP DOWN, top empties first.
         Canvas {
             id: timerRing
             anchors.fill: bg
@@ -439,7 +567,6 @@ PanelWindow {
                 var cx = x + w / 2
                 var cy = y + h / 2
 
-                // Segment table traced CLOCKWISE from top-center.
                 var segs = [
                     { len: straightW / 2, kind: "line",
                       x1: cx, y1: y, x2: x + w - r, y2: y },
@@ -492,10 +619,6 @@ PanelWindow {
 
                 if (halfLen < 0.01) return
 
-                // ---- Arm A: anchored at BOTTOM-center, sweeping CCW ----
-                // At full time (remaining = 1, halfLen = perim/2), it goes
-                // all the way around to the top-center the "left way".
-                // As time runs down, its tip retracts back to bottom-center.
                 ctx.beginPath()
                 for (var i = 0; i <= steps; i++) {
                     var dA = perim / 2 - (halfLen * i) / steps
@@ -505,7 +628,6 @@ PanelWindow {
                 }
                 ctx.stroke()
 
-                // ---- Arm B: anchored at BOTTOM-center, sweeping CW ----
                 ctx.beginPath()
                 for (var j = 0; j <= steps; j++) {
                     var dB = perim / 2 + (halfLen * j) / steps

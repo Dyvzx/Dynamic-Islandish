@@ -1,4 +1,6 @@
 import QtQuick
+import Quickshell
+import Quickshell.Io
 
 QtObject {
     id: pomodoro
@@ -9,6 +11,11 @@ QtObject {
     // Default to zero — presets add to this.
     property int durationSec: 0
     property int remainingSec: 0
+
+    // Text used for the "timer finished" notification.
+    property string notifyTitle: "Timer done"
+    property string notifyBody: "Your pomodoro has finished."
+    property string notifyAppName: "Pomodoro"
 
     readonly property real progress:
         durationSec > 0 ? 1.0 - (remainingSec / durationSec) : 0
@@ -27,24 +34,18 @@ QtObject {
     function start(seconds) {
         if (seconds !== undefined && seconds > 0)
             durationSec = seconds
-        // If we're starting after a finish, reload the duration.
         if (remainingSec <= 0)
             remainingSec = durationSec
-        // Do not start if there's nothing to run.
         if (remainingSec <= 0) return
         state = "running"
-        tick.restart()
     }
 
     function pause() {
         if (state === "running")
             state = "idle"
-        tick.stop()
     }
 
-    // Reset clears everything back to zero / ready.
     function reset() {
-        tick.stop()
         durationSec = 0
         remainingSec = 0
         state = "idle"
@@ -54,15 +55,54 @@ QtObject {
         reset()
     }
 
-    // Add `secs` seconds to the current duration and remaining time.
-    // Does NOT start the timer. If the timer was running, it stops it
-    // so the user can keep accumulating time before pressing Start.
     function addPreset(secs) {
         if (secs === undefined || secs <= 0) return
-        tick.stop()
         durationSec += secs
         remainingSec += secs
         state = "idle"
+    }
+
+    // ------------------------------------------------------------
+    // Fire a desktop notification when the timer finishes.
+    //
+    // Uses notify-send so dunst receives it on D-Bus, then the
+    // NotificationMonitor picks it up and the island shows it —
+    // exactly like a normal system notification.
+    //
+    // `-a` sets app name, `-i` sets an icon. The icon is a Nerd
+    // Font glyph-free name (dunst can't render font icons), so we
+    // use the freedesktop standard "alarm" icon; if the icon theme
+    // doesn't have it, dunst/the island will fall back to the
+    // built-in bell glyph.
+    // ------------------------------------------------------------
+    property Process _notifyProc: Process {
+        id: _notifyProc
+        command: ["sh", "-c", "true"]   // replaced at fire time
+    }
+
+    function _fireFinishedNotification() {
+        // Escape single quotes in user-provided strings so the shell
+        // command doesn't break.
+        function esc(s) {
+            return String(s).replace(/'/g, "'\\''")
+        }
+
+        var cmd =
+            "notify-send " +
+            "-a '" + esc(notifyAppName) + "' " +
+            "-i 'alarm' " +
+            "-u normal " +
+            "'" + esc(notifyTitle) + "' " +
+            "'" + esc(notifyBody) + "'"
+
+        _notifyProc.command = ["sh", "-c", cmd]
+        _notifyProc.running = false
+        _notifyProc.running = true
+    }
+
+    onStateChanged: {
+        if (state === "finished")
+            _fireFinishedNotification()
     }
 
     property Timer tick: Timer {
@@ -75,7 +115,6 @@ QtObject {
             if (pomodoro.remainingSec <= 0) {
                 pomodoro.remainingSec = 0
                 pomodoro.state = "finished"
-                tick.stop()
             }
         }
     }
