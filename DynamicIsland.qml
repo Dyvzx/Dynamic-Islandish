@@ -42,12 +42,9 @@ PanelWindow {
 
     readonly property bool timerRunning: pomodoro && pomodoro.state === "running"
 
-    // "notification exists in the monitor"
     readonly property bool notificationActive:
         notificationMon && notificationMon.current !== null
 
-    // "notification exists AND notifications are enabled" — used for all
-    // visual / reveal decisions.
     readonly property bool notificationShowing:
         islandState.notificationsEnabled && notificationActive
 
@@ -55,7 +52,9 @@ PanelWindow {
     property int mediaRevealDuration: 4000
     property bool mediaRevealActive: false
     property bool _prevMediaPlaying: false
-    property bool _mediaRevealUserCancelled: false
+
+    // True until the user scrolls during the reveal.
+    property bool _mediaRevealForcedVisualizer: false
 
     property bool _mediaPrevHidden: false
     property bool _mediaPrevLocked: false
@@ -65,6 +64,9 @@ PanelWindow {
         mediaRevealActive
         && !isExpanded
         && !notificationShowing
+
+    readonly property int mediaRevealWidget:
+        _mediaRevealForcedVisualizer ? 0 : compactWidget
 
     // ---- Notification reveal snapshot ----
     property bool _notifPrevHidden: false
@@ -76,25 +78,38 @@ PanelWindow {
 
     Component.onCompleted: islandState.island = island
 
+    // ============================================================
+    // Wheel: toggle widget, restart reveal window if active.
+    //
+    // Special case: during a fresh reveal (forced visualizer), the
+    // FIRST scroll — in either direction — always brings up the
+    // clock, so the user sees an immediate visible change.
+    // ============================================================
     function cycleCompactWidget(delta) {
-        if (island.mediaRevealActive) {
-            island._mediaRevealUserCancelled = true
-            island.mediaRevealActive = false
+        if (island.mediaRevealActive && island._mediaRevealForcedVisualizer) {
+            island._mediaRevealForcedVisualizer = false
+            island.compactWidget = 1              // clock
+            mediaRevealTimer.restart()
+            return
         }
+
         if (delta > 0)
             island.compactWidget = (island.compactWidget - 1 + 2) % 2
         else if (delta < 0)
             island.compactWidget = (island.compactWidget + 1) % 2
+
+        if (island.mediaRevealActive)
+            mediaRevealTimer.restart()
     }
 
     // ============================================================
-    // Media playing: detect rising edge → reveal for a few seconds
-    // (skipped entirely if media pop-ups are disabled)
+    // Media playing: rising edge → fresh reveal with forced
+    // visualizer for mediaRevealDuration.
     // ============================================================
     onMediaPlayingChanged: {
         if (mediaPlaying && !_prevMediaPlaying) {
             if (islandState.mediaPopupsEnabled) {
-                island._mediaRevealUserCancelled = false
+                island._mediaRevealForcedVisualizer = true
                 mediaRevealActive = true
                 mediaRevealTimer.restart()
             }
@@ -110,7 +125,7 @@ PanelWindow {
     }
 
     // ============================================================
-    // State snapshot / restore for media reveal
+    // Snapshot / restore for media reveal
     // ============================================================
     onMediaRevealActiveChanged: {
         if (mediaRevealActive) {
@@ -126,14 +141,6 @@ PanelWindow {
                     islandState.locked = false
             }
         } else {
-            if (island._mediaRevealUserCancelled) {
-                island._mediaRevealUserCancelled = false
-                island._mediaPrevHidden   = false
-                island._mediaPrevLocked   = false
-                island._mediaPrevRevealed = false
-                return
-            }
-
             if (!notificationShowing) {
                 if (_mediaPrevLocked)
                     islandState.locked = true
@@ -142,16 +149,17 @@ PanelWindow {
                     islandState.hideIslandAgain()
                 else if (_mediaPrevRevealed)
                     islandState.revealedWhileHidden = true
-
-                _mediaPrevHidden   = false
-                _mediaPrevLocked   = false
-                _mediaPrevRevealed = false
             }
+
+            _mediaPrevHidden   = false
+            _mediaPrevLocked   = false
+            _mediaPrevRevealed = false
+            _mediaRevealForcedVisualizer = false
         }
     }
 
     // ============================================================
-    // Notifications: only participate when enabled
+    // Notifications
     // ============================================================
     onNotificationActiveChanged: {
         if (notificationActive && islandState.notificationsEnabled) {
@@ -179,8 +187,6 @@ PanelWindow {
         }
     }
 
-    // When notifications are toggled off mid-display, dismiss everything
-    // and restore the island to its pre-notification state.
     Connections {
         target: islandState
         function onNotificationsEnabledChanged() {
@@ -417,16 +423,41 @@ PanelWindow {
             Item {
                 id: compactMediaReveal
                 anchors.centerIn: parent
-                width: mediaRevealVisualizer.implicitWidth
-                height: mediaRevealVisualizer.implicitHeight
                 visible: island.mediaRevealShowing
+
+                implicitWidth: mediaRevealClockHolder.visible
+                    ? mediaRevealClockHolder.implicitWidth
+                    : mediaRevealVisualizer.implicitWidth
+                implicitHeight: mediaRevealClockHolder.visible
+                    ? mediaRevealClockHolder.implicitHeight
+                    : mediaRevealVisualizer.implicitHeight
+
+                width: implicitWidth
+                height: implicitHeight
 
                 CompactVisualizer {
                     id: mediaRevealVisualizer
                     anchors.centerIn: parent
                     theme: island.theme
-                    activeAudio: true
+                    activeAudio: island._mediaRevealForcedVisualizer
+                        ? true
+                        : island.activeAudio
                     liveVolume: island.liveVolume
+                    visible: island.mediaRevealWidget === 0
+                }
+
+                Item {
+                    id: mediaRevealClockHolder
+                    anchors.centerIn: parent
+                    visible: island.mediaRevealWidget === 1
+                    implicitWidth: mediaRevealClock.implicitWidth
+                    implicitHeight: mediaRevealClock.implicitHeight
+
+                    CompactClock {
+                        id: mediaRevealClock
+                        anchors.centerIn: parent
+                        theme: island.theme
+                    }
                 }
             }
 
@@ -500,7 +531,6 @@ PanelWindow {
                             islandState.rightClickHideOrWrap()
                             return
                         }
-                        island._mediaRevealUserCancelled = true
                         island.mediaRevealActive = false
                         island.isExpanded = true
                     }
@@ -525,7 +555,6 @@ PanelWindow {
                         if (islandState.collapsed) return
                         if (activeTranslation.y < -30) {
                             locked = true
-                            island._mediaRevealUserCancelled = true
                             island.mediaRevealActive = false
                             islandState.locked = true
                         }
