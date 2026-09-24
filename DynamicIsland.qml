@@ -21,7 +21,9 @@ PanelWindow {
 
     implicitHeight: islandState.collapsed
         ? islandState.lockedIslandHeight
-        : (island.isExpanded ? island.screen.height : islandState.islandHeight)
+        : (island.isExpanded
+            ? island.screen.height
+            : islandState.islandHeight)
 
     Behavior on implicitHeight {
         NumberAnimation { duration: 320; easing.type: Easing.OutCubic }
@@ -36,6 +38,8 @@ PanelWindow {
     property bool isExpanded: false
     property int activeTab: 0
     property int compactWidget: 0
+
+    property bool powerMenuOpen: false
 
     property int liveVolume: 0
     property bool liveMuted: false
@@ -52,8 +56,6 @@ PanelWindow {
     property int mediaRevealDuration: 4000
     property bool mediaRevealActive: false
     property bool _prevMediaPlaying: false
-
-    // True until the user scrolls during the reveal.
     property bool _mediaRevealForcedVisualizer: false
 
     property bool _mediaPrevHidden: false
@@ -64,6 +66,7 @@ PanelWindow {
         mediaRevealActive
         && !isExpanded
         && !notificationShowing
+        && !powerMenuOpen
 
     readonly property int mediaRevealWidget:
         _mediaRevealForcedVisualizer ? 0 : compactWidget
@@ -79,16 +82,34 @@ PanelWindow {
     Component.onCompleted: islandState.island = island
 
     // ============================================================
+    // System commands
+    // ============================================================
+    Process {
+        id: sysCmdProc
+        command: ["sh", "-c", "true"]
+    }
+
+    function _runSystemCmd(cmd) {
+        sysCmdProc.command = ["sh", "-c", cmd]
+        sysCmdProc.running = false
+        sysCmdProc.running = true
+    }
+
+    function lockSession() {
+        _runSystemCmd("hyprlock")
+        island.powerMenuOpen = false
+    }
+    function suspend()  { _runSystemCmd("systemctl suspend");  island.powerMenuOpen = false }
+    function reboot()   { _runSystemCmd("systemctl reboot");   island.powerMenuOpen = false }
+    function powerOff() { _runSystemCmd("systemctl poweroff"); island.powerMenuOpen = false }
+
+    // ============================================================
     // Wheel: toggle widget, restart reveal window if active.
-    //
-    // Special case: during a fresh reveal (forced visualizer), the
-    // FIRST scroll — in either direction — always brings up the
-    // clock, so the user sees an immediate visible change.
     // ============================================================
     function cycleCompactWidget(delta) {
         if (island.mediaRevealActive && island._mediaRevealForcedVisualizer) {
             island._mediaRevealForcedVisualizer = false
-            island.compactWidget = 1              // clock
+            island.compactWidget = 1
             mediaRevealTimer.restart()
             return
         }
@@ -103,12 +124,11 @@ PanelWindow {
     }
 
     // ============================================================
-    // Media playing: rising edge → fresh reveal with forced
-    // visualizer for mediaRevealDuration.
+    // Media playing: rising edge → fresh reveal
     // ============================================================
     onMediaPlayingChanged: {
         if (mediaPlaying && !_prevMediaPlaying) {
-            if (islandState.mediaPopupsEnabled) {
+            if (islandState.mediaPopupsEnabled && !island.powerMenuOpen) {
                 island._mediaRevealForcedVisualizer = true
                 mediaRevealActive = true
                 mediaRevealTimer.restart()
@@ -124,9 +144,6 @@ PanelWindow {
         onTriggered: island.mediaRevealActive = false
     }
 
-    // ============================================================
-    // Snapshot / restore for media reveal
-    // ============================================================
     onMediaRevealActiveChanged: {
         if (mediaRevealActive) {
             if (!notificationShowing) {
@@ -216,10 +233,16 @@ PanelWindow {
     Connections {
         target: islandState
         function onCollapsedChanged() {
-            if (islandState.collapsed) island.isExpanded = false
+            if (islandState.collapsed) {
+                island.isExpanded = false
+                island.powerMenuOpen = false
+            }
         }
         function onLockedChanged() {
-            if (islandState.locked) island.isExpanded = false
+            if (islandState.locked) {
+                island.isExpanded = false
+                island.powerMenuOpen = false
+            }
         }
     }
 
@@ -286,11 +309,24 @@ PanelWindow {
         }
     }
 
+    // Backdrop — dismisses the power menu when clicking outside.
+    // z = 1: above the transparent base but BELOW islandBody (z:50)
+    // so the power menu buttons still receive clicks.
+    MouseArea {
+        anchors.fill: parent
+        visible: island.powerMenuOpen && !islandState.collapsed
+        enabled: visible
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        z: 1
+        onClicked: function(mouse) { island.powerMenuOpen = false }
+    }
+
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        visible: island.isExpanded && !islandState.collapsed
-        enabled: island.isExpanded && !islandState.collapsed
+        visible: island.isExpanded && !islandState.collapsed && !island.powerMenuOpen
+        enabled: visible
+        z: 0
         onClicked: function(mouse) {
             if (mouse.button === Qt.RightButton) {
                 islandState.rightClickHideOrWrap()
@@ -300,6 +336,10 @@ PanelWindow {
         }
     }
 
+    // ============================================================
+    // Locked notch — small pill at the top; click or drag down
+    // to unlock.
+    // ============================================================
     Rectangle {
         id: lockedNotch
         anchors.top: parent.top
@@ -308,6 +348,7 @@ PanelWindow {
         height: 9
         visible: islandState.lockedDown
         enabled: islandState.lockedDown
+        z: 5
 
         topLeftRadius: 0
         topRightRadius: 0
@@ -353,6 +394,11 @@ PanelWindow {
         }
     }
 
+    // ============================================================
+    // Island body — compact pill stays centered; power pill sits
+    // to its LEFT with the same height and same top edge.
+    // z = 50 so it sits above the backdrop MouseArea (z = 1).
+    // ============================================================
     Item {
         id: islandBody
         anchors.horizontalCenter: parent.horizontalCenter
@@ -362,13 +408,13 @@ PanelWindow {
         width:  bg.width
         height: bg.height
         visible: !islandState.collapsed
+        z: 50
 
-        Behavior on width  { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
-        Behavior on height { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
-
+        // ---- Compact pill ----
         Rectangle {
             id: bg
             anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
 
             width: island.isExpanded
                 ? Math.max(expandedBody.width + 28, 460)
@@ -390,15 +436,20 @@ PanelWindow {
             border.width: 1
             clip: true
 
+            Behavior on width  { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+            Behavior on height { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
             Behavior on radius { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
             Behavior on border.color { ColorAnimation { duration: 200 } }
 
+            // Notification
             Item {
                 id: compactNotification
                 anchors.centerIn: parent
                 width: notifContent.implicitWidth
                 height: notifContent.implicitHeight
-                visible: island.notificationShowing && !island.isExpanded
+                visible: island.notificationShowing
+                         && !island.isExpanded
+                         && !island.powerMenuOpen
 
                 NotificationIsland {
                     id: notifContent
@@ -420,6 +471,7 @@ PanelWindow {
                 }
             }
 
+            // Media reveal
             Item {
                 id: compactMediaReveal
                 anchors.centerIn: parent
@@ -461,6 +513,7 @@ PanelWindow {
                 }
             }
 
+            // Idle compact widgets
             Item {
                 anchors.fill: parent
                 visible: !island.isExpanded
@@ -498,6 +551,7 @@ PanelWindow {
                 }
             }
 
+            // Expanded tabs
             Column {
                 id: expandedBody
                 anchors.centerIn: parent
@@ -515,6 +569,7 @@ PanelWindow {
                 }
             }
 
+            // Compact gestures
             Item {
                 id: compactClick
                 anchors.fill: parent
@@ -527,6 +582,8 @@ PanelWindow {
                     cursorShape: Qt.PointingHandCursor
 
                     onClicked: function(mouse) {
+                        if (island.powerMenuOpen)
+                            return
                         if (mouse.button === Qt.RightButton) {
                             islandState.rightClickHideOrWrap()
                             return
@@ -536,37 +593,64 @@ PanelWindow {
                     }
 
                     onWheel: function(w) {
+                        if (Math.abs(w.angleDelta.x) > Math.abs(w.angleDelta.y)) {
+                            if (w.angleDelta.x < -30 && !island.powerMenuOpen) {
+                                island.mediaRevealActive = false
+                                island.powerMenuOpen = true
+                            } else if (w.angleDelta.x > 30 && island.powerMenuOpen) {
+                                island.powerMenuOpen = false
+                            }
+                            w.accepted = true
+                            return
+                        }
                         island.cycleCompactWidget(w.angleDelta.y)
                         w.accepted = true
                     }
                 }
 
                 DragHandler {
-                    id: lockDrag
+                    id: swipeDrag
                     target: null
                     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
                     dragThreshold: 10
 
-                    property bool locked: false
+                    property bool triggered: false
 
-                    onActiveChanged: { if (active) locked = false }
+                    onActiveChanged: { if (active) triggered = false }
+
                     onActiveTranslationChanged: {
-                        if (!active || locked) return
+                        if (!active || triggered) return
                         if (islandState.collapsed) return
-                        if (activeTranslation.y < -30) {
-                            locked = true
-                            island.mediaRevealActive = false
-                            islandState.locked = true
+                        if (island.powerMenuOpen) return
+
+                        var dx = activeTranslation.x
+                        var dy = activeTranslation.y
+
+                        if (Math.abs(dx) > Math.abs(dy)) {
+                            if (dx < -40) {
+                                triggered = true
+                                island.mediaRevealActive = false
+                                island.powerMenuOpen = true
+                            }
+                        } else {
+                            if (dy < -30) {
+                                triggered = true
+                                island.mediaRevealActive = false
+                                islandState.locked = true
+                            }
                         }
                     }
                 }
             }
         }
 
+        // ============================================================
+        // Timer ring — sibling of bg
+        // ============================================================
         Canvas {
             id: timerRing
             anchors.fill: bg
-            visible: island.timerRunning
+            visible: island.timerRunning && bg.visible
             antialiasing: true
             renderStrategy: Canvas.Cooperative
             z: 10
@@ -680,6 +764,50 @@ PanelWindow {
                     else         ctx.lineTo(pB.x, pB.y)
                 }
                 ctx.stroke()
+            }
+        }
+
+        // ============================================================
+        // Power pill — same height as the compact pill, sits to its
+        // left. Width driven by menu content. Right edge anchored
+        // 8px to the left of bg.left (Qt anchors handle the offset).
+        // ============================================================
+        Rectangle {
+            id: powerPill
+
+            anchors.top: bg.top
+            height: bg.height
+            width: menuContent.implicitWidth + 20
+
+            anchors.right: bg.left
+            anchors.rightMargin: 8
+
+            z: 30
+
+            visible: island.powerMenuOpen || opacity > 0.01
+            enabled: island.powerMenuOpen
+
+            opacity: island.powerMenuOpen ? 1 : 0
+            Behavior on opacity {
+                NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+            }
+
+            radius: height / 2
+            color: theme.colBg
+            border.color: "#1c1c1e"
+            border.width: 1
+            clip: true
+
+            PowerMenu {
+                id: menuContent
+                anchors.centerIn: parent
+                theme: island.theme
+
+                onLockRequested:     island.lockSession()
+                onSuspendRequested:  island.suspend()
+                onRebootRequested:   island.reboot()
+                onPowerOffRequested: island.powerOff()
+                onCancelRequested:   island.powerMenuOpen = false
             }
         }
     }
