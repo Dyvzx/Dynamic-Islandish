@@ -50,8 +50,12 @@ Column {
     Item {
         id: tabContent
         width: 420
-        // Timer tab needs more vertical room; other tabs stay 200.
-        height: root.island.activeTab === 3 ? 300 : 200
+        height: {
+            if (root.island.activeTab === 3) return 300   // Timer
+            if (root.island.activeTab === 1) return 130   // Stats — 96 + margins
+            if (root.island.activeTab === 2) return 60    // Tray
+            return 200                                    // Media
+        }
 
         MediaTab {
             anchors.fill: parent

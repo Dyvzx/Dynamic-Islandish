@@ -403,7 +403,7 @@ PanelWindow {
         id: islandBody
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
-        anchors.topMargin: 4
+        anchors.topMargin: islandState.notchMode ? 0 : 4
 
         width:  bg.width
         height: bg.height
@@ -411,9 +411,9 @@ PanelWindow {
         z: 50
 
         // ============================================================
-        // Compact pill
+        // Compact pill / notch container
         // ============================================================
-        Rectangle {
+        Item {
             id: bg
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
@@ -432,215 +432,251 @@ PanelWindow {
                 ? expandedBody.height + 28
                 : 36
 
-            radius: island.isExpanded ? 22 : height / 2
-            color: theme.colBg
-            border.color: island.timerRunning ? "transparent" : "#1c1c1e"
-            border.width: 1
-            clip: true
+            readonly property bool notch: island.islandState.notchMode
+
+            // Radius drives the timer-ring Canvas geometry. For the
+            // notch surface it's used as the bottom corner radius.
+            property real radius: island.isExpanded ? 22 : height / 2
+
+            // Kept for compatibility with anything reading bg.clip.
+            property bool clip: true
 
             Behavior on width  { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
             Behavior on height { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
             Behavior on radius { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
-            Behavior on border.color { ColorAnimation { duration: 200 } }
 
-            // ---- Notification ----
-            Item {
-                id: compactNotification
-                anchors.centerIn: parent
-                width: notifContent.implicitWidth
-                height: notifContent.implicitHeight
-                visible: island.notificationShowing
-                         && !island.isExpanded
-                         && !island.powerMenuOpen
-
-                NotificationIsland {
-                    id: notifContent
-                    anchors.centerIn: parent
-                    theme: island.theme
-                    notif: island.notificationMon ? island.notificationMon.current : null
-                    accent: island.ringColor
-
-                    onDismissRequested: island.dismissNotification()
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    cursorShape: Qt.PointingHandCursor
-                    z: -1
-
-                    onClicked: function(mouse) { island.dismissNotification() }
-                }
+            // ----- Surface: pill mode (compact + expanded when not notch) -----
+            Rectangle {
+                id: pillSurface
+                anchors.fill: parent
+                visible: !bg.notch || island.isExpanded
+                radius: island.isExpanded ? 22 : bg.radius
+                topLeftRadius:     (bg.notch && island.isExpanded) ? 0 : radius
+                topRightRadius:    (bg.notch && island.isExpanded) ? 0 : radius
+                bottomLeftRadius:  radius
+                bottomRightRadius: radius
+                color: island.theme.colBg
+                border.color: island.timerRunning ? "transparent" : "#1c1c1e"
+                border.width: 1
             }
 
-            // ---- Media reveal ----
+            // ----- Surface: notch mode, compact only -----
+            NotchShape {
+                id: notchSurface
+                anchors.fill: parent
+                visible: bg.notch && !island.isExpanded
+                fillColor:   island.theme.colBg
+                strokeColor: island.timerRunning ? "transparent" : "#1c1c1e"
+                strokeWidth: 1
+                bottomRadius: bg.radius
+                fillet: island.islandState.notchFillet
+            }
+
+            // ----- Content host -----
             Item {
-                id: compactMediaReveal
-                anchors.centerIn: parent
-                visible: island.mediaRevealShowing
+                id: contentHost
+                anchors.fill: parent
+                clip: true
 
-                implicitWidth: mediaRevealClockHolder.visible
-                    ? mediaRevealClockHolder.implicitWidth
-                    : mediaRevealVisualizer.implicitWidth
-                implicitHeight: mediaRevealClockHolder.visible
-                    ? mediaRevealClockHolder.implicitHeight
-                    : mediaRevealVisualizer.implicitHeight
-
-                width: implicitWidth
-                height: implicitHeight
-
-                CompactVisualizer {
-                    id: mediaRevealVisualizer
-                    anchors.centerIn: parent
-                    theme: island.theme
-                    activeAudio: island._mediaRevealForcedVisualizer
-                        ? true
-                        : island.activeAudio
-                    liveVolume: island.liveVolume
-                    visible: island.mediaRevealWidget === 0
-                }
-
+                // ---- Notification ----
                 Item {
-                    id: mediaRevealClockHolder
+                    id: compactNotification
                     anchors.centerIn: parent
-                    visible: island.mediaRevealWidget === 1
-                    implicitWidth: mediaRevealClock.implicitWidth
-                    implicitHeight: mediaRevealClock.implicitHeight
+                    width: notifContent.implicitWidth
+                    height: notifContent.implicitHeight
+                    visible: island.notificationShowing
+                             && !island.isExpanded
+                             && !island.powerMenuOpen
 
-                    CompactClock {
-                        id: mediaRevealClock
+                    NotificationIsland {
+                        id: notifContent
                         anchors.centerIn: parent
                         theme: island.theme
+                        notif: island.notificationMon ? island.notificationMon.current : null
+                        accent: island.ringColor
+
+                        onDismissRequested: island.dismissNotification()
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: Qt.PointingHandCursor
+                        z: -1
+
+                        onClicked: function(mouse) { island.dismissNotification() }
                     }
                 }
-            }
 
-            // ---- Idle compact widgets ----
-            Item {
-                anchors.fill: parent
-                visible: !island.isExpanded
-                         && !island.notificationShowing
-                         && !island.mediaRevealShowing
-
-                opacity: visible ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-
-                CompactVisualizer {
-                    id: compactVisualizer
-                    anchors.centerIn: parent
-                    theme: island.theme
-                    activeAudio: island.activeAudio
-                    liveVolume: island.liveVolume
-                    visible: island.compactWidget === 0
-                    opacity: island.compactWidget === 0 ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 180 } }
-                }
-
+                // ---- Media reveal ----
                 Item {
-                    id: compactClockHolder
+                    id: compactMediaReveal
                     anchors.centerIn: parent
-                    visible: island.compactWidget === 1
-                    opacity: island.compactWidget === 1 ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 180 } }
-                    implicitWidth: compactClock.implicitWidth
-                    implicitHeight: compactClock.implicitHeight
+                    visible: island.mediaRevealShowing
 
-                    CompactClock {
-                        id: compactClock
+                    implicitWidth: mediaRevealClockHolder.visible
+                        ? mediaRevealClockHolder.implicitWidth
+                        : mediaRevealVisualizer.implicitWidth
+                    implicitHeight: mediaRevealClockHolder.visible
+                        ? mediaRevealClockHolder.implicitHeight
+                        : mediaRevealVisualizer.implicitHeight
+
+                    width: implicitWidth
+                    height: implicitHeight
+
+                    CompactVisualizer {
+                        id: mediaRevealVisualizer
                         anchors.centerIn: parent
                         theme: island.theme
+                        activeAudio: island._mediaRevealForcedVisualizer
+                            ? true
+                            : island.activeAudio
+                        liveVolume: island.liveVolume
+                        visible: island.mediaRevealWidget === 0
+                    }
+
+                    Item {
+                        id: mediaRevealClockHolder
+                        anchors.centerIn: parent
+                        visible: island.mediaRevealWidget === 1
+                        implicitWidth: mediaRevealClock.implicitWidth
+                        implicitHeight: mediaRevealClock.implicitHeight
+
+                        CompactClock {
+                            id: mediaRevealClock
+                            anchors.centerIn: parent
+                            theme: island.theme
+                        }
                     }
                 }
-            }
 
-            // ---- Expanded tabs ----
-            Column {
-                id: expandedBody
-                anchors.centerIn: parent
-                spacing: 10
-                opacity: island.isExpanded ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 220 } }
-                visible: opacity > 0
-
-                ExpandedTabs {
-                    id: tabContent
-                    island: island
-                    theme: island.theme
-                    stats: island.stats
-                    pomodoro: island.pomodoro
-                }
-            }
-
-            // ---- Compact gestures ----
-            Item {
-                id: compactClick
-                anchors.fill: parent
-                visible: !island.isExpanded && !island.notificationShowing
-                enabled: visible
-
-                MouseArea {
+                // ---- Idle compact widgets ----
+                Item {
                     anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
-                    cursorShape: Qt.PointingHandCursor
+                    visible: !island.isExpanded
+                             && !island.notificationShowing
+                             && !island.mediaRevealShowing
 
-                    onClicked: function(mouse) {
-                        if (island.powerMenuOpen) {
-                            island.powerMenuOpen = false
-                            return
-                        }
-                        if (mouse.button === Qt.RightButton) {
-                            islandState.rightClickHideOrWrap()
-                            return
-                        }
-                        island.mediaRevealActive = false
-                        island.isExpanded = true
+                    opacity: visible ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 200 } }
+
+                    CompactVisualizer {
+                        id: compactVisualizer
+                        anchors.centerIn: parent
+                        theme: island.theme
+                        activeAudio: island.activeAudio
+                        liveVolume: island.liveVolume
+                        visible: island.compactWidget === 0
+                        opacity: island.compactWidget === 0 ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 180 } }
                     }
 
-                    onWheel: function(w) {
-                        if (Math.abs(w.angleDelta.x) > Math.abs(w.angleDelta.y)) {
-                            if (w.angleDelta.x < -30 && !island.powerMenuOpen) {
-                                island.mediaRevealActive = false
-                                island.powerMenuOpen = true
-                            } else if (w.angleDelta.x > 30 && island.powerMenuOpen) {
+                    Item {
+                        id: compactClockHolder
+                        anchors.centerIn: parent
+                        visible: island.compactWidget === 1
+                        opacity: island.compactWidget === 1 ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 180 } }
+                        implicitWidth: compactClock.implicitWidth
+                        implicitHeight: compactClock.implicitHeight
+
+                        CompactClock {
+                            id: compactClock
+                            anchors.centerIn: parent
+                            theme: island.theme
+                        }
+                    }
+                }
+
+                // ---- Expanded tabs ----
+                Column {
+                    id: expandedBody
+                    anchors.centerIn: parent
+                    spacing: 10
+                    opacity: island.isExpanded ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 220 } }
+                    visible: opacity > 0
+
+                    ExpandedTabs {
+                        id: tabContent
+                        island: island
+                        theme: island.theme
+                        stats: island.stats
+                        pomodoro: island.pomodoro
+                    }
+                }
+
+                // ---- Compact gestures ----
+                Item {
+                    id: compactClick
+                    anchors.fill: parent
+                    visible: !island.isExpanded && !island.notificationShowing
+                    enabled: visible
+
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: Qt.PointingHandCursor
+
+                        onClicked: function(mouse) {
+                            if (island.powerMenuOpen) {
                                 island.powerMenuOpen = false
+                                return
                             }
-                            w.accepted = true
-                            return
+                            if (mouse.button === Qt.RightButton) {
+                                islandState.rightClickHideOrWrap()
+                                return
+                            }
+                            island.mediaRevealActive = false
+                            island.isExpanded = true
                         }
-                        island.cycleCompactWidget(w.angleDelta.y)
-                        w.accepted = true
-                    }
-                }
 
-                DragHandler {
-                    id: swipeDrag
-                    target: null
-                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
-                    dragThreshold: 10
-
-                    property bool triggered: false
-
-                    onActiveChanged: { if (active) triggered = false }
-
-                    onActiveTranslationChanged: {
-                        if (!active || triggered) return
-                        if (islandState.collapsed) return
-                        if (island.powerMenuOpen) return
-
-                        var dx = activeTranslation.x
-                        var dy = activeTranslation.y
-
-                        if (Math.abs(dx) > Math.abs(dy)) {
-                            if (dx < -40) {
-                                triggered = true
-                                island.mediaRevealActive = false
-                                island.powerMenuOpen = true
+                        onWheel: function(w) {
+                            if (Math.abs(w.angleDelta.x) > Math.abs(w.angleDelta.y)) {
+                                if (w.angleDelta.x < -30 && !island.powerMenuOpen) {
+                                    island.mediaRevealActive = false
+                                    island.powerMenuOpen = true
+                                } else if (w.angleDelta.x > 30 && island.powerMenuOpen) {
+                                    island.powerMenuOpen = false
+                                }
+                                w.accepted = true
+                                return
                             }
-                        } else {
-                            if (dy < -30) {
-                                triggered = true
-                                island.mediaRevealActive = false
-                                islandState.locked = true
+                            island.cycleCompactWidget(w.angleDelta.y)
+                            w.accepted = true
+                        }
+                    }
+
+                    DragHandler {
+                        id: swipeDrag
+                        target: null
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad | PointerDevice.TouchScreen
+                        dragThreshold: 10
+
+                        property bool triggered: false
+
+                        onActiveChanged: { if (active) triggered = false }
+
+                        onActiveTranslationChanged: {
+                            if (!active || triggered) return
+                            if (islandState.collapsed) return
+                            if (island.powerMenuOpen) return
+
+                            var dx = activeTranslation.x
+                            var dy = activeTranslation.y
+
+                            if (Math.abs(dx) > Math.abs(dy)) {
+                                if (dx < -40) {
+                                    triggered = true
+                                    island.mediaRevealActive = false
+                                    island.powerMenuOpen = true
+                                }
+                            } else {
+                                if (dy < -30) {
+                                    triggered = true
+                                    island.mediaRevealActive = false
+                                    islandState.locked = true
+                                }
                             }
                         }
                     }
@@ -668,6 +704,11 @@ PanelWindow {
                 target: island
                 function onRingColorChanged() { timerRing.requestPaint() }
             }
+            Connections {
+                target: island.islandState
+                function onNotchModeChanged()   { timerRing.requestPaint() }
+                function onNotchFilletChanged() { timerRing.requestPaint() }
+            }
             onWidthChanged:  requestPaint()
             onHeightChanged: requestPaint()
             onVisibleChanged: if (visible) requestPaint()
@@ -684,65 +725,145 @@ PanelWindow {
                 var x = inset
                 var y = inset
 
-                var r = Math.min(bg.radius, Math.min(w, h) / 2)
-                if (r < 0) r = 0
+                // ---- Progress (0 → 1 as the timer runs) ----
+                var progress = island.pomodoro ? island.pomodoro.progress : 0
+                if (progress < 0) progress = 0
+                if (progress > 1) progress = 1
 
-                var remaining = 1.0 - (island.pomodoro ? island.pomodoro.progress : 1)
-                if (remaining < 0) remaining = 0
-                if (remaining > 1) remaining = 1
+                function quadLength(x1_, y1_, cx_, cy_, x2_, y2_) {
+                    var N = 16, sum = 0
+                    for (var i = 0; i < N; i++) {
+                        var t = (i + 0.5) / N
+                        var u = 1 - t
+                        var dx = 2*u*(cx_ - x1_) + 2*t*(x2_ - cx_)
+                        var dy = 2*u*(cy_ - y1_) + 2*t*(y2_ - cy_)
+                        sum += Math.sqrt(dx*dx + dy*dy)
+                    }
+                    return sum / N
+                }
 
-                var straightW = Math.max(0, w - 2 * r)
-                var straightH = Math.max(0, h - 2 * r)
-                var quarter   = Math.PI * r / 2
-                var perim     = 2 * straightW + 2 * straightH + 4 * quarter
+                function lineSeg(x1_, y1_, x2_, y2_) {
+                    var dx = x2_ - x1_, dy = y2_ - y1_
+                    return { kind: "line",
+                             x1: x1_, y1: y1_, x2: x2_, y2: y2_,
+                             len: Math.sqrt(dx*dx + dy*dy) }
+                }
+                function quadSeg(x1_, y1_, cx_, cy_, x2_, y2_) {
+                    return { kind: "quad",
+                             x1: x1_, y1: y1_,
+                             cx: cx_, cy: cy_,
+                             x2: x2_, y2: y2_,
+                             len: quadLength(x1_, y1_, cx_, cy_, x2_, y2_) }
+                }
+                function arcSeg(ccx_, ccy_, r_, a1_, a2_) {
+                    return { kind: "arc",
+                             ccx: ccx_, ccy: ccy_,
+                             r: r_, a1: a1_, a2: a2_,
+                             len: r_ * Math.abs(a2_ - a1_) }
+                }
 
-                var cx = x + w / 2
-                var cy = y + h / 2
+                var leftHalf  = []
+                var rightHalf = []
 
-                var segs = [
-                    { len: straightW / 2, kind: "line",
-                      x1: cx, y1: y, x2: x + w - r, y2: y },
-                    { len: quarter, kind: "arc",
-                      ccx: x + w - r, ccy: y + r, a1: -Math.PI/2, a2: 0 },
-                    { len: straightH, kind: "line",
-                      x1: x + w, y1: y + r, x2: x + w, y2: y + h - r },
-                    { len: quarter, kind: "arc",
-                      ccx: x + w - r, ccy: y + h - r, a1: 0, a2: Math.PI/2 },
-                    { len: straightW, kind: "line",
-                      x1: x + w - r, y1: y + h, x2: x + r, y2: y + h },
-                    { len: quarter, kind: "arc",
-                      ccx: x + r, ccy: y + h - r, a1: Math.PI/2, a2: Math.PI },
-                    { len: straightH, kind: "line",
-                      x1: x, y1: y + h - r, x2: x, y2: y + r },
-                    { len: quarter, kind: "arc",
-                      ccx: x + r, ccy: y + r, a1: Math.PI, a2: Math.PI * 1.5 },
-                    { len: straightW / 2, kind: "line",
-                      x1: x + r, y1: y, x2: cx, y2: y }
-                ]
+                if (bg.notch) {
+                    var f  = Math.max(1, Math.min(island.islandState.notchFillet,
+                                                  Math.min(w, h) / 2))
+                    var br = Math.max(0, Math.min(bg.radius,
+                                                  Math.min(w, h) / 2))
 
-                function ptAtDist(d) {
-                    d = ((d % perim) + perim) % perim
+                    var x0 = x + f
+                    var x1 = x + w - f
+                    var y0 = y
+                    var y1 = y + h
+                    var xL = x0 - f
+                    var xR = x1 + f
+                    var cxT = (xL + xR) / 2
+                    var cxB = (x0 + x1) / 2
+
+                    rightHalf = [
+                        lineSeg(cxT, y0, x1, y0),
+                        quadSeg(x1, y0, x1, y0, xR, y0),
+                        lineSeg(x1, y0 + f, x1, y1 - br),
+                        quadSeg(x1, y1 - br, x1, y1, x1 - br, y1),
+                        lineSeg(x1 - br, y1, cxB, y1)
+                    ]
+
+                    leftHalf = [
+                        lineSeg(cxT, y0, x0, y0),
+                        quadSeg(x0, y0, x0, y0, xL, y0),
+                        lineSeg(x0, y0 + f, x0, y1 - br),
+                        quadSeg(x0, y1 - br, x0, y1, x0 + br, y1),
+                        lineSeg(x0 + br, y1, cxB, y1)
+                    ]
+                } else {
+                    var r = Math.min(bg.radius, Math.min(w, h) / 2)
+                    if (r < 0) r = 0
+
+                    var cx = x + w / 2
+
+                    rightHalf = [
+                        lineSeg(cx, y, x + w - r, y),
+                        arcSeg(x + w - r, y + r, r, -Math.PI/2, 0),
+                        lineSeg(x + w, y + r, x + w, y + h - r),
+                        arcSeg(x + w - r, y + h - r, r, 0, Math.PI/2),
+                        lineSeg(x + w - r, y + h, cx, y + h)
+                    ]
+
+                    leftHalf = [
+                        lineSeg(cx, y, x + r, y),
+                        arcSeg(x + r, y + r, r, -Math.PI/2, -Math.PI),
+                        lineSeg(x, y + r, x, y + h - r),
+                        arcSeg(x + r, y + h - r, r, Math.PI, Math.PI/2),
+                        lineSeg(x + r, y + h, cx, y + h)
+                    ]
+                }
+
+                function totalLen(list) {
+                    var s = 0
+                    for (var i = 0; i < list.length; i++) s += list[i].len
+                    return s
+                }
+                function pointOn(list, d) {
+                    if (d <= 0) {
+                        var s0 = list[0]
+                        return { x: s0.x1, y: s0.y1 }
+                    }
                     var acc = 0
-                    for (var i = 0; i < segs.length; i++) {
-                        var s = segs[i]
+                    for (var k = 0; k < list.length; k++) {
+                        var s = list[k]
                         if (d <= acc + s.len) {
-                            var t = (d - acc) / s.len
+                            var t = s.len > 0 ? (d - acc) / s.len : 0
                             if (s.kind === "line") {
                                 return { x: s.x1 + (s.x2 - s.x1) * t,
                                          y: s.y1 + (s.y2 - s.y1) * t }
+                            } else if (s.kind === "quad") {
+                                var u = 1 - t
+                                return {
+                                    x: u*u*s.x1 + 2*u*t*s.cx + t*t*s.x2,
+                                    y: u*u*s.y1 + 2*u*t*s.cy + t*t*s.y2
+                                }
                             } else {
                                 var a = s.a1 + (s.a2 - s.a1) * t
-                                return { x: s.ccx + r * Math.cos(a),
-                                         y: s.ccy + r * Math.sin(a) }
+                                return { x: s.ccx + s.r * Math.cos(a),
+                                         y: s.ccy + s.r * Math.sin(a) }
                             }
                         }
                         acc += s.len
                     }
-                    return { x: cx, y: y }
+                    var sF = list[list.length - 1]
+                    return { x: sF.x2, y: sF.y2 }
                 }
 
-                var halfLen = perim * remaining / 2
-                var steps = 64
+                var rightLen = totalLen(rightHalf)
+                var leftLen  = totalLen(leftHalf)
+                var halfMax  = Math.min(rightLen, leftLen)
+
+                // ---- Growth direction: top-center → bottom-center ----
+                // `halfLen` grows from 0 to halfMax as `progress`
+                // grows from 0 to 1. The arcs are drawn as the top
+                // portion of each half-path.
+                var halfLen = halfMax * progress
+                var steps = 160
 
                 ctx.lineWidth   = stroke
                 ctx.lineCap     = "round"
@@ -751,21 +872,23 @@ PanelWindow {
 
                 if (halfLen < 0.01) return
 
+                // Right arc: top-center → down the right side.
                 ctx.beginPath()
-                for (var i = 0; i <= steps; i++) {
-                    var dA = perim / 2 - (halfLen * i) / steps
-                    var pA = ptAtDist(dA)
-                    if (i === 0) ctx.moveTo(pA.x, pA.y)
-                    else         ctx.lineTo(pA.x, pA.y)
+                for (var j = 0; j <= steps; j++) {
+                    var dR = (halfLen * j) / steps
+                    var pR = pointOn(rightHalf, dR)
+                    if (j === 0) ctx.moveTo(pR.x, pR.y)
+                    else         ctx.lineTo(pR.x, pR.y)
                 }
                 ctx.stroke()
 
+                // Left arc: top-center → down the left side.
                 ctx.beginPath()
-                for (var j = 0; j <= steps; j++) {
-                    var dB = perim / 2 + (halfLen * j) / steps
-                    var pB = ptAtDist(dB)
-                    if (j === 0) ctx.moveTo(pB.x, pB.y)
-                    else         ctx.lineTo(pB.x, pB.y)
+                for (var i = 0; i <= steps; i++) {
+                    var dL = (halfLen * i) / steps
+                    var pL = pointOn(leftHalf, dL)
+                    if (i === 0) ctx.moveTo(pL.x, pL.y)
+                    else         ctx.lineTo(pL.x, pL.y)
                 }
                 ctx.stroke()
             }
