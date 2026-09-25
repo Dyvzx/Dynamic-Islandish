@@ -21,7 +21,7 @@ PanelWindow {
 
     implicitHeight: islandState.collapsed
         ? islandState.lockedIslandHeight
-        : (island.isExpanded
+        : (island.isExpanded || island.powerMenuOpen
             ? island.screen.height
             : islandState.islandHeight)
 
@@ -309,9 +309,9 @@ PanelWindow {
         }
     }
 
-    // Backdrop — dismisses the power menu when clicking outside.
-    // z = 1: above the transparent base but BELOW islandBody (z:50)
-    // so the power menu buttons still receive clicks.
+    // Backdrop — full-screen; dismisses the power menu when clicking
+    // anywhere outside the pill. Sits above the desktop surface but
+    // below islandBody (z: 50).
     MouseArea {
         anchors.fill: parent
         visible: island.powerMenuOpen && !islandState.collapsed
@@ -321,6 +321,7 @@ PanelWindow {
         onClicked: function(mouse) { island.powerMenuOpen = false }
     }
 
+    // Expanded-island backdrop — also full screen.
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -337,8 +338,7 @@ PanelWindow {
     }
 
     // ============================================================
-    // Locked notch — small pill at the top; click or drag down
-    // to unlock.
+    // Locked notch — click or drag down to unlock.
     // ============================================================
     Rectangle {
         id: lockedNotch
@@ -396,8 +396,8 @@ PanelWindow {
 
     // ============================================================
     // Island body — compact pill stays centered; power pill sits
-    // to its LEFT with the same height and same top edge.
-    // z = 50 so it sits above the backdrop MouseArea (z = 1).
+    // to its LEFT with the same height. z: 50 so it's above the
+    // backdrops (z: 0 and 1) and its buttons are clickable.
     // ============================================================
     Item {
         id: islandBody
@@ -410,7 +410,9 @@ PanelWindow {
         visible: !islandState.collapsed
         z: 50
 
-        // ---- Compact pill ----
+        // ============================================================
+        // Compact pill
+        // ============================================================
         Rectangle {
             id: bg
             anchors.horizontalCenter: parent.horizontalCenter
@@ -441,7 +443,7 @@ PanelWindow {
             Behavior on radius { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
             Behavior on border.color { ColorAnimation { duration: 200 } }
 
-            // Notification
+            // ---- Notification ----
             Item {
                 id: compactNotification
                 anchors.centerIn: parent
@@ -471,7 +473,7 @@ PanelWindow {
                 }
             }
 
-            // Media reveal
+            // ---- Media reveal ----
             Item {
                 id: compactMediaReveal
                 anchors.centerIn: parent
@@ -513,7 +515,7 @@ PanelWindow {
                 }
             }
 
-            // Idle compact widgets
+            // ---- Idle compact widgets ----
             Item {
                 anchors.fill: parent
                 visible: !island.isExpanded
@@ -551,7 +553,7 @@ PanelWindow {
                 }
             }
 
-            // Expanded tabs
+            // ---- Expanded tabs ----
             Column {
                 id: expandedBody
                 anchors.centerIn: parent
@@ -569,7 +571,7 @@ PanelWindow {
                 }
             }
 
-            // Compact gestures
+            // ---- Compact gestures ----
             Item {
                 id: compactClick
                 anchors.fill: parent
@@ -582,8 +584,10 @@ PanelWindow {
                     cursorShape: Qt.PointingHandCursor
 
                     onClicked: function(mouse) {
-                        if (island.powerMenuOpen)
+                        if (island.powerMenuOpen) {
+                            island.powerMenuOpen = false
                             return
+                        }
                         if (mouse.button === Qt.RightButton) {
                             islandState.rightClickHideOrWrap()
                             return
@@ -645,7 +649,7 @@ PanelWindow {
         }
 
         // ============================================================
-        // Timer ring — sibling of bg
+        // Timer ring
         // ============================================================
         Canvas {
             id: timerRing
@@ -769,15 +773,18 @@ PanelWindow {
 
         // ============================================================
         // Power pill — same height as the compact pill, sits to its
-        // left. Width driven by menu content. Right edge anchored
-        // 8px to the left of bg.left (Qt anchors handle the offset).
+        // left. Grows leftward on open (width + opacity animation).
         // ============================================================
         Rectangle {
             id: powerPill
 
             anchors.top: bg.top
             height: bg.height
-            width: menuContent.implicitWidth + 20
+
+            readonly property int fullWidth: menuContent.implicitWidth + 20
+            readonly property int stubWidth: bg.height
+
+            width: island.powerMenuOpen ? fullWidth : stubWidth
 
             anchors.right: bg.left
             anchors.rightMargin: 8
@@ -788,9 +795,9 @@ PanelWindow {
             enabled: island.powerMenuOpen
 
             opacity: island.powerMenuOpen ? 1 : 0
-            Behavior on opacity {
-                NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
-            }
+
+            Behavior on width   { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
             radius: height / 2
             color: theme.colBg
@@ -800,7 +807,9 @@ PanelWindow {
 
             PowerMenu {
                 id: menuContent
-                anchors.centerIn: parent
+                anchors.right: parent.right
+                anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
                 theme: island.theme
 
                 onLockRequested:     island.lockSession()
