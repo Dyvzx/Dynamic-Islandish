@@ -48,7 +48,7 @@ Item {
 
     Row {
         anchors.centerIn: parent
-        spacing: 14
+        spacing: 10
 
         Rectangle {
             id: cpuCard

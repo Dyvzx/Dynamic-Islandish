@@ -12,6 +12,12 @@ QtObject {
     property bool mediaPopupsEnabled: true
     property bool notificationsEnabled: true
 
+    // ---- Appearance ----
+    // false = floating pill (default), true = notch hugging the top edge
+    property bool notchMode: false
+    // Concave radius where the notch flares out into the top edge.
+    property int  notchFillet: 10
+
     readonly property bool hiddenByUser:
         islandHidden && !revealedWhileHidden
 
@@ -54,6 +60,10 @@ QtObject {
 
     function toggleNotifications() {
         notificationsEnabled = !notificationsEnabled
+    }
+
+    function toggleNotchMode() {
+        notchMode = !notchMode
     }
 
     function rightClickHideOrWrap() {
