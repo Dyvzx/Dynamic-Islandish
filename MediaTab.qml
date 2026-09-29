@@ -14,11 +14,12 @@ Item {
         spacing: 10
         width: parent.width
 
-        // ============ Media player ============
+        // ============ Media player + CAVA visualizer ============
         Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 14
 
+            // ---- Left: album art ----
             Rectangle {
                 width: 56; height: 56; radius: 10
                 color: root.theme.colBgSoft
@@ -53,10 +54,11 @@ Item {
                 }
             }
 
+            // ---- Middle: track info ----
             Column {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 4
-                width: 300
+                width: 220
 
                 Text {
                     id: titleText
@@ -97,6 +99,25 @@ Item {
                     font { family: root.theme.fontFamily; pixelSize: 12 }
                     elide: Text.ElideRight
                 }
+            }
+
+            // ---- Right: CAVA visualizer, opposite the track name ----
+            CavaVisualizer {
+                id: cavaViz
+                anchors.verticalCenter: parent.verticalCenter
+                theme: root.theme
+                cava: root.island.cava
+                activeAudio: root.island.activeAudio
+
+                // Natural width — MediaTab has its own big album art
+                // on the left, so no art ring here.
+                compact: false
+                showArt: false
+
+                barWidth: 4
+                barSpacing: 3
+                minBarHeight: 4
+                maxBarHeight: 44
             }
         }
 
@@ -237,10 +258,7 @@ Item {
         }
     }
 
-        // ============ Feature toggles ============
-    // Row of four buttons, centered horizontally, sitting just above
-    // the workspaces row.
-    //   [ hide island ]  [ media pop-ups ]  [ notifications ]  [ notch shape ]
+    // ============ Feature toggles ============
     Row {
         id: toggleRow
         anchors.horizontalCenter: parent.horizontalCenter
@@ -488,6 +506,7 @@ Item {
             HoverHandler { id: notchHover }
         }
     }
+
     // ============ Workspaces ============
     WorkspaceRow {
         id: wsContainer

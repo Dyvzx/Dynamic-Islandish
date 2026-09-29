@@ -1,15 +1,12 @@
 import QtQuick
 
-Text {
+Item {
     id: compactClock
     required property var theme
 
-    color: "#ffffff"
-    font {
-        family: theme.fontFamily
-        pixelSize: 13
-        bold: true
-    }
+    // ---- Fixed footprint (matches CavaVisualizer) ----
+    implicitWidth: 142
+    implicitHeight: 24
 
     function fmt() {
         var now = new Date()
@@ -17,12 +14,23 @@ Text {
         return Qt.formatDateTime(now, "hh:mm AP") + " / " +
                Qt.formatDateTime(adj, "hh:mm AP")
     }
-    text: fmt()
+
+    Text {
+        id: clockText
+        anchors.centerIn: parent
+        color: "#ffffff"
+        font {
+            family: compactClock.theme.fontFamily
+            pixelSize: 13
+            bold: true
+        }
+        text: compactClock.fmt()
+    }
 
     Timer {
         interval: 1000
         running: compactClock.visible
         repeat: true
-        onTriggered: compactClock.text = compactClock.fmt()
+        onTriggered: clockText.text = compactClock.fmt()
     }
 }

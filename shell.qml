@@ -9,6 +9,7 @@ ShellRoot {
     Theme { id: theme }
     Stats { id: stats }
     AudioMonitor { id: audioMon }
+    CavaMonitor { id: cavaMon }
     IslandState { id: islandState }
     Pomodoro { id: pomodoro }
     NotificationMonitor { id: notificationMon }
@@ -28,13 +29,14 @@ ShellRoot {
         screen: targetScreen  // Explicitly specify
     }
 
-    DynamicIsland {
-        theme: theme
-        stats: stats
-        audioMon: audioMon
-        islandState: islandState
-        pomodoro: pomodoro
-        notificationMon: notificationMon
-        screen: targetScreen  // Explicitly specify
-    }
+DynamicIsland {
+    theme: theme
+    stats: stats
+    audioMon: audioMon
+    islandState: islandState
+    pomodoro: pomodoro
+    notificationMon: notificationMon
+    cava: cavaMon
+    screen: targetScreen
+}
 }

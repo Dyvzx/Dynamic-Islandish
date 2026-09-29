@@ -18,6 +18,7 @@ PanelWindow {
     required property var islandState
     required property var pomodoro
     required property var notificationMon
+    required property var cava
 
     implicitHeight: islandState.collapsed
         ? islandState.lockedIslandHeight
@@ -309,9 +310,7 @@ PanelWindow {
         }
     }
 
-    // Backdrop — full-screen; dismisses the power menu when clicking
-    // anywhere outside the pill. Sits above the desktop surface but
-    // below islandBody (z: 50).
+    // Backdrop for power menu
     MouseArea {
         anchors.fill: parent
         visible: island.powerMenuOpen && !islandState.collapsed
@@ -321,7 +320,7 @@ PanelWindow {
         onClicked: function(mouse) { island.powerMenuOpen = false }
     }
 
-    // Expanded-island backdrop — also full screen.
+    // Backdrop for expanded island
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -338,7 +337,7 @@ PanelWindow {
     }
 
     // ============================================================
-    // Locked notch — click or drag down to unlock.
+    // Locked notch
     // ============================================================
     Rectangle {
         id: lockedNotch
@@ -395,9 +394,7 @@ PanelWindow {
     }
 
     // ============================================================
-    // Island body — compact pill stays centered; power pill sits
-    // to its LEFT with the same height. z: 50 so it's above the
-    // backdrops (z: 0 and 1) and its buttons are clickable.
+    // Island body
     // ============================================================
     Item {
         id: islandBody
@@ -410,13 +407,14 @@ PanelWindow {
         visible: !islandState.collapsed
         z: 50
 
-        // ============================================================
-        // Compact pill / notch container
-        // ============================================================
         Item {
             id: bg
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
+
+            // Both compact widgets share the same implicitWidth (142),
+            // so the pill never changes width when toggling between them.
+            readonly property real compactWidgetWidth: 142
 
             width: island.isExpanded
                 ? Math.max(expandedBody.width + 28, 460)
@@ -424,9 +422,7 @@ PanelWindow {
                     ? compactNotification.width + 44
                     : (compactMediaReveal.visible
                         ? compactMediaReveal.width + 44
-                        : (island.compactWidget === 0
-                            ? compactVisualizer.implicitWidth + 44
-                            : compactClockHolder.implicitWidth + 44)))
+                        : compactWidgetWidth + 44))
 
             height: island.isExpanded
                 ? expandedBody.height + 28
@@ -434,18 +430,13 @@ PanelWindow {
 
             readonly property bool notch: island.islandState.notchMode
 
-            // Radius drives the timer-ring Canvas geometry. For the
-            // notch surface it's used as the bottom corner radius.
             property real radius: island.isExpanded ? 22 : height / 2
-
-            // Kept for compatibility with anything reading bg.clip.
             property bool clip: true
 
             Behavior on width  { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
             Behavior on height { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
             Behavior on radius { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
 
-            // ----- Surface: pill mode (compact + expanded when not notch) -----
             Rectangle {
                 id: pillSurface
                 anchors.fill: parent
@@ -460,7 +451,6 @@ PanelWindow {
                 border.width: 1
             }
 
-            // ----- Surface: notch mode, compact only -----
             NotchShape {
                 id: notchSurface
                 anchors.fill: parent
@@ -472,7 +462,6 @@ PanelWindow {
                 fillet: island.islandState.notchFillet
             }
 
-            // ----- Content host -----
             Item {
                 id: contentHost
                 anchors.fill: parent
@@ -524,14 +513,14 @@ PanelWindow {
                     width: implicitWidth
                     height: implicitHeight
 
-                    CompactVisualizer {
+                    CavaVisualizer {
                         id: mediaRevealVisualizer
                         anchors.centerIn: parent
                         theme: island.theme
+                        cava: island.cava
                         activeAudio: island._mediaRevealForcedVisualizer
                             ? true
                             : island.activeAudio
-                        liveVolume: island.liveVolume
                         visible: island.mediaRevealWidget === 0
                     }
 
@@ -560,12 +549,12 @@ PanelWindow {
                     opacity: visible ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 200 } }
 
-                    CompactVisualizer {
+                    CavaVisualizer {
                         id: compactVisualizer
                         anchors.centerIn: parent
                         theme: island.theme
+                        cava: island.cava
                         activeAudio: island.activeAudio
-                        liveVolume: island.liveVolume
                         visible: island.compactWidget === 0
                         opacity: island.compactWidget === 0 ? 1 : 0
                         Behavior on opacity { NumberAnimation { duration: 180 } }
@@ -725,7 +714,6 @@ PanelWindow {
                 var x = inset
                 var y = inset
 
-                // ---- Progress (0 → 1 as the timer runs) ----
                 var progress = island.pomodoro ? island.pomodoro.progress : 0
                 if (progress < 0) progress = 0
                 if (progress > 1) progress = 1
@@ -858,10 +846,6 @@ PanelWindow {
                 var leftLen  = totalLen(leftHalf)
                 var halfMax  = Math.min(rightLen, leftLen)
 
-                // ---- Growth direction: top-center → bottom-center ----
-                // `halfLen` grows from 0 to halfMax as `progress`
-                // grows from 0 to 1. The arcs are drawn as the top
-                // portion of each half-path.
                 var halfLen = halfMax * progress
                 var steps = 160
 
@@ -872,7 +856,6 @@ PanelWindow {
 
                 if (halfLen < 0.01) return
 
-                // Right arc: top-center → down the right side.
                 ctx.beginPath()
                 for (var j = 0; j <= steps; j++) {
                     var dR = (halfLen * j) / steps
@@ -882,7 +865,6 @@ PanelWindow {
                 }
                 ctx.stroke()
 
-                // Left arc: top-center → down the left side.
                 ctx.beginPath()
                 for (var i = 0; i <= steps; i++) {
                     var dL = (halfLen * i) / steps
@@ -895,8 +877,7 @@ PanelWindow {
         }
 
         // ============================================================
-        // Power pill — same height as the compact pill, sits to its
-        // left. Grows leftward on open (width + opacity animation).
+        // Power pill
         // ============================================================
         Rectangle {
             id: powerPill

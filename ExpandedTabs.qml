@@ -57,12 +57,13 @@ Column {
             return 200                                    // Media
         }
 
-        MediaTab {
-            anchors.fill: parent
-            visible: root.island.activeTab === 0
-            theme: root.theme
-            island: root.island
-        }
+MediaTab {
+    anchors.fill: parent
+    visible: root.island.activeTab === 0
+    theme: root.theme
+    island: root.island
+    // no extra props needed if MediaTab reads root.island.cava directly
+}
 
         StatsTab {
             anchors.fill: parent
