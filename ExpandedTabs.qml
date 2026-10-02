@@ -8,6 +8,11 @@ Column {
     required property var stats
     required property var pomodoro
 
+    // Forward tray menu requests up to DynamicIsland so the menu can be
+    // rendered outside the clipped island body.
+    signal trayMenuRequested(var sniItem, var anchor)
+    signal trayMenuDismissed()
+
     spacing: 10
 
     Row {
@@ -52,18 +57,17 @@ Column {
         width: 420
         height: {
             if (root.island.activeTab === 3) return 300   // Timer
-            if (root.island.activeTab === 1) return 130   // Stats — 96 + margins
+            if (root.island.activeTab === 1) return 130   // Stats
             if (root.island.activeTab === 2) return 60    // Tray
             return 200                                    // Media
         }
 
-MediaTab {
-    anchors.fill: parent
-    visible: root.island.activeTab === 0
-    theme: root.theme
-    island: root.island
-    // no extra props needed if MediaTab reads root.island.cava directly
-}
+        MediaTab {
+            anchors.fill: parent
+            visible: root.island.activeTab === 0
+            theme: root.theme
+            island: root.island
+        }
 
         StatsTab {
             anchors.fill: parent
@@ -77,6 +81,11 @@ MediaTab {
             visible: root.island.activeTab === 2
             theme: root.theme
             island: root.island
+
+            onMenuRequested: function(sniItem, anchor) {
+                root.trayMenuRequested(sniItem, anchor)
+            }
+            onMenuDismissed: root.trayMenuDismissed()
         }
 
         PomodoroTab {

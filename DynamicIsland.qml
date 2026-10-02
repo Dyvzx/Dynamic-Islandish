@@ -45,6 +45,10 @@ PanelWindow {
     property int liveVolume: 0
     property bool liveMuted: false
 
+    // ---- Custom tray context menu (owned here so it isn't clipped) ----
+    property var trayMenuSni: null
+    property var trayMenuAnchor: null
+
     readonly property bool timerRunning: pomodoro && pomodoro.state === "running"
 
     readonly property bool notificationActive:
@@ -592,6 +596,15 @@ PanelWindow {
                         theme: island.theme
                         stats: island.stats
                         pomodoro: island.pomodoro
+
+                        onTrayMenuRequested: function(sniItem, anchor) {
+                            island.trayMenuSni = sniItem
+                            island.trayMenuAnchor = anchor
+                        }
+                        onTrayMenuDismissed: {
+                            island.trayMenuSni = null
+                            island.trayMenuAnchor = null
+                        }
                     }
                 }
 
@@ -922,6 +935,57 @@ PanelWindow {
                 onPowerOffRequested: island.powerOff()
                 onCancelRequested:   island.powerMenuOpen = false
             }
+        }
+    }
+
+    // ============================================================
+    // Tray context menu (lives outside the clipped island body)
+    // ============================================================
+    // Click-away backdrop for the tray menu (below the menu, above the island)
+    MouseArea {
+        anchors.fill: parent
+        visible: island.trayMenuSni !== null
+        enabled: visible
+        z: 299
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: {
+            island.trayMenuSni = null
+            island.trayMenuAnchor = null
+        }
+    }
+
+    // Tray context menu — painted above the island body and its backdrop
+    TrayMenu {
+        id: trayContextMenu
+        z: 300
+        theme: island.theme
+        menuHandle: island.trayMenuSni ? island.trayMenuSni.menu : null
+        open: island.trayMenuSni !== null
+        anchorItem: island.trayMenuAnchor
+        coordinateSpace: island.contentItem
+        onCloseRequested: {
+            island.trayMenuSni = null
+            island.trayMenuAnchor = null
+        }
+    }
+
+    Shortcut {
+        sequence: "Escape"
+        enabled: island.trayMenuSni !== null
+        onActivated: {
+            island.trayMenuSni = null
+            island.trayMenuAnchor = null
+        }
+    }
+
+    // Escape closes the tray menu (PanelWindow has no keyboard focus,
+    // so this uses the global Shortcut path)
+    Shortcut {
+        sequence: "Escape"
+        enabled: island.trayMenuSni !== null
+        onActivated: {
+            island.trayMenuSni = null
+            island.trayMenuAnchor = null
         }
     }
 }
